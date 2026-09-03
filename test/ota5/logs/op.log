@@ -1,0 +1,21 @@
+
+Note: No compatibility mode selected!
+
+
+Circuit: sky130 5t ota operating point testbench
+
+Doing analysis at TEMP = 27.000000 and TNOM = 27.000000
+
+
+No. of Data Rows : 1
+
+========================================
+OTA OPERATING POINT
+========================================
+v(inp) = 9.000000000000000e-01
+v(inn) = 9.000000000000000e-01
+v(out) = 8.168860766089949e-01
+v(vbias) = 7.000000000000000e-01
+idd_a = 2.004742564003307e-05
+idd_ua = 2.004742564003307e+01
+ngspice-41 done

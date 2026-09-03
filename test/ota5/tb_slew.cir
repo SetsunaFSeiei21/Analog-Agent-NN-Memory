@@ -1,0 +1,122 @@
+SKY130 5T OTA Slew Rate Testbench
+
+* ============================================================
+* PDK
+* ============================================================
+
+.lib "/public/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+
+
+.include "five_t_ota.sp"
+.include "ota_params.sp"
+.include "sim_params.sp"
+
+
+* ============================================================
+* Supply / Bias
+* ============================================================
+
+VDD_SRC VDD 0 DC {VDD_VAL}
+
+VBIAS_SRC VBIAS 0 DC {VBIAS_VAL}
+
+
+* ============================================================
+* Input Pulse
+*
+* 0.7 V -> 1.1 V
+*
+* Rising edge at 1 us
+* Falling edge at approximately 5 us
+* ============================================================
+
+VIN_SRC IN 0 PULSE(0.7 1.1 1u 1n 1n 4u 10u)
+
+
+* ============================================================
+* DUT
+*
+* Unity-gain follower:
+*
+* VINP = IN
+* VINN = OUT
+* ============================================================
+
+XOTA IN OUT OUT VDD 0 VBIAS FIVE_T_OTA
++ WIN={WIN_VAL}
++ LIN={LIN_VAL}
++ WLOAD={WLOAD_VAL}
++ LLOAD={LLOAD_VAL}
++ WTAIL={WTAIL_VAL}
++ LTAIL={LTAIL_VAL}
+
+
+CLOAD OUT 0 {CL_VAL}
+
+
+* ============================================================
+* Transient Analysis
+* ============================================================
+
+.tran 1n 12u
+
+
+.control
+
+run
+
+set wr_singlescale
+set wr_vecnames
+option numdgt=15
+
+
+* ============================================================
+* Positive transition
+*
+* 10% -> 90%
+* ============================================================
+
+meas tran rise_10_90 TRIG v(OUT) VAL=0.74 RISE=1 TD=0.9u TARG v(OUT) VAL=1.06 RISE=1
+
+
+* ============================================================
+* Negative transition
+*
+* 90% -> 10%
+* ============================================================
+
+meas tran fall_90_10 TRIG v(OUT) VAL=1.06 FALL=1 TD=4.9u TARG v(OUT) VAL=0.74 FALL=1
+
+
+* ============================================================
+* Slew Rate
+*
+* Time is seconds.
+*
+* SR [V/us] = DeltaV / DeltaT / 1e6
+* ============================================================
+
+let positive_slewrate_v_us = 0.32/rise_10_90/1e6
+
+let negative_slewrate_v_us = 0.32/fall_90_10/1e6
+
+
+echo ========================================
+echo SLEW RATE
+echo ========================================
+
+print rise_10_90
+print fall_90_10
+
+print positive_slewrate_v_us
+print negative_slewrate_v_us
+
+
+wrdata slew_response.txt v(IN) v(OUT)
+
+
+quit
+
+.endc
+
+.end

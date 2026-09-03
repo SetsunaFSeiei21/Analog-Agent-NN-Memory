@@ -1,0 +1,120 @@
+SKY130 5T OTA CMRR Testbench
+
+* ============================================================
+* PDK
+* ============================================================
+
+.lib "/public/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+
+
+.include "five_t_ota.sp"
+.include "ota_params.sp"
+.include "sim_params.sp"
+
+
+* ============================================================
+* Shared Bias
+* ============================================================
+
+VBIAS_SRC VBIAS 0 DC {VBIAS_VAL}
+
+
+* ============================================================
+* DUT 1: Differential Gain
+* ============================================================
+
+VDD_DIFF VDD_DIFF 0 DC {VDD_VAL}
+
+VINP_DIFF INP_DIFF 0 DC {VCM_VAL} AC 0.5 0
+VINN_DIFF INN_DIFF 0 DC {VCM_VAL} AC 0.5 180
+
+
+XOTA_DIFF INP_DIFF INN_DIFF OUT_DIFF VDD_DIFF 0 VBIAS FIVE_T_OTA
++ WIN={WIN_VAL}
++ LIN={LIN_VAL}
++ WLOAD={WLOAD_VAL}
++ LLOAD={LLOAD_VAL}
++ WTAIL={WTAIL_VAL}
++ LTAIL={LTAIL_VAL}
+
+
+CLOAD_DIFF OUT_DIFF 0 {CL_VAL}
+
+
+* ============================================================
+* DUT 2: Common-Mode Gain
+*
+* Both inputs receive exactly the same AC signal.
+*
+* Vcm(ac) = 1 V
+* Vid(ac) = 0 V
+* ============================================================
+
+VDD_CM VDD_CM 0 DC {VDD_VAL}
+
+VINP_CM INP_CM 0 DC {VCM_VAL} AC 1 0
+VINN_CM INN_CM 0 DC {VCM_VAL} AC 1 0
+
+
+XOTA_CM INP_CM INN_CM OUT_CM VDD_CM 0 VBIAS FIVE_T_OTA
++ WIN={WIN_VAL}
++ LIN={LIN_VAL}
++ WLOAD={WLOAD_VAL}
++ LLOAD={LLOAD_VAL}
++ WTAIL={WTAIL_VAL}
++ LTAIL={LTAIL_VAL}
+
+
+CLOAD_CM OUT_CM 0 {CL_VAL}
+
+
+* ============================================================
+* Analysis
+* ============================================================
+
+.ac dec 100 1 1G
+
+
+.control
+
+run
+
+set wr_singlescale
+set wr_vecnames
+option numdgt=15
+
+
+let ad_db = db(v(OUT_DIFF))
+let acm_db = db(v(OUT_CM))
+
+let cmrr_curve_db = ad_db - acm_db
+
+
+* ============================================================
+* Low-frequency values at 1 Hz
+* ============================================================
+
+meas ac ad_dc_db FIND ad_db AT=1
+
+meas ac acm_dc_db FIND acm_db AT=1
+
+meas ac cmrr_db FIND cmrr_curve_db AT=1
+
+
+echo ========================================
+echo CMRR
+echo ========================================
+
+print ad_dc_db
+print acm_dc_db
+print cmrr_db
+
+
+wrdata cmrr_response.txt ad_db acm_db cmrr_curve_db
+
+
+quit
+
+.endc
+
+.end

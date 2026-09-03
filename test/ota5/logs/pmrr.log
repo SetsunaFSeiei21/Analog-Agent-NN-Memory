@@ -1,0 +1,20 @@
+
+Note: No compatibility mode selected!
+
+
+Circuit: sky130 5t ota pmrr+ testbench
+
+Doing analysis at TEMP = 27.000000 and TNOM = 27.000000
+
+
+No. of Data Rows : 901
+ad_dc_db            =  3.640806e+01
+avdd_dc_db          =  -1.647092e-03
+pmrr_db             =  3.640971e+01
+========================================
+PMRR+
+========================================
+ad_dc_db = 3.640806000000000e+01
+avdd_dc_db = -1.64709200000000e-03
+pmrr_db = 3.640971000000000e+01
+ngspice-41 done

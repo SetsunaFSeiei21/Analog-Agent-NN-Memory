@@ -1,0 +1,104 @@
+SKY130 5T OTA Operating Point Testbench
+
+
+* ============================================================
+* SKY130 Model
+* ============================================================
+
+.lib "/public/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+
+
+* ============================================================
+* Include DUT and Parameters
+* ============================================================
+
+.include "five_t_ota.sp"
+.include "ota_params.sp"
+.include "sim_params.sp"
+
+
+* ============================================================
+* Supply
+* ============================================================
+
+VDD_SRC VDD 0 DC {VDD_VAL}
+
+VBIAS_SRC VBIAS 0 DC {VBIAS_VAL}
+
+
+* ============================================================
+* Inputs
+* ============================================================
+
+VINP_SRC INP 0 DC {VCM_VAL}
+
+VINN_SRC INN 0 DC {VCM_VAL}
+
+
+* ============================================================
+* DUT
+* ============================================================
+
+XOTA INP INN OUT VDD 0 VBIAS FIVE_T_OTA
++ WIN={WIN_VAL}
++ LIN={LIN_VAL}
++ WLOAD={WLOAD_VAL}
++ LLOAD={LLOAD_VAL}
++ WTAIL={WTAIL_VAL}
++ LTAIL={LTAIL_VAL}
+
+
+* ============================================================
+* Load
+* ============================================================
+
+CLOAD OUT 0 {CL_VAL}
+
+
+* ============================================================
+* Operating Point Analysis
+* ============================================================
+
+.op
+
+
+.control
+
+run
+
+set wr_singlescale
+set wr_vecnames
+option numdgt=15
+
+
+echo
+echo ========================================
+echo OTA OPERATING POINT
+echo ========================================
+
+
+print v(INP)
+print v(INN)
+print v(OUT)
+print v(VBIAS)
+
+
+* Supply current
+let idd_a = -i(VDD_SRC)
+
+let idd_ua = idd_a * 1e6
+
+
+print idd_a
+print idd_ua
+
+
+wrdata op_result.txt v(INP) v(INN) v(OUT) idd_ua
+
+
+quit
+
+.endc
+
+
+.end

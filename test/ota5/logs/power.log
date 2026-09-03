@@ -1,0 +1,18 @@
+
+Note: No compatibility mode selected!
+
+
+Circuit: sky130 5t ota static power testbench
+
+Doing analysis at TEMP = 27.000000 and TNOM = 27.000000
+
+
+No. of Data Rows : 1
+========================================
+STATIC POWER
+========================================
+idd_a = 2.004742564003307e-05
+idd_ua = 2.004742564003307e+01
+power_w = 3.608536615205953e-05
+power_uw = 3.608536615205953e+01
+ngspice-41 done

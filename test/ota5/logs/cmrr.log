@@ -1,0 +1,20 @@
+
+Note: No compatibility mode selected!
+
+
+Circuit: sky130 5t ota cmrr testbench
+
+Doing analysis at TEMP = 27.000000 and TNOM = 27.000000
+
+
+No. of Data Rows : 901
+ad_dc_db            =  3.640806e+01
+acm_dc_db           =  -3.467645e+01
+cmrr_db             =  7.108451e+01
+========================================
+CMRR
+========================================
+ad_dc_db = 3.640806000000000e+01
+acm_dc_db = -3.46764500000000e+01
+cmrr_db = 7.108450999999999e+01
+ngspice-41 done

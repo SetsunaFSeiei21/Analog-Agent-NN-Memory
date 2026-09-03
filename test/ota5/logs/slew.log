@@ -1,0 +1,36 @@
+
+Note: No compatibility mode selected!
+
+
+Circuit: sky130 5t ota slew rate testbench
+
+Doing analysis at TEMP = 27.000000 and TNOM = 27.000000
+
+
+Initial Transient Solution
+--------------------------
+
+Node                                   Voltage
+----                                   -------
+vdd                                        1.8
+vbias                                      0.7
+in                                         0.7
+xota.n1                               0.828191
+xota.ntail                           0.0898774
+out                                   0.701832
+vin_src#branch                               0
+vbias_src#branch                             0
+vdd_src#branch                    -1.66966e-05
+
+
+No. of Data Rows : 12026
+rise_10_90          =  1.860500e-08 targ=  1.020790e-06 trig=  1.002185e-06
+fall_90_10          =  1.938364e-08 targ=  5.022859e-06 trig=  5.003476e-06
+========================================
+SLEW RATE
+========================================
+rise_10_90 = 1.860500000000000e-08
+fall_90_10 = 1.938364000000000e-08
+positive_slewrate_v_us = 1.719967750604676e+01
+negative_slewrate_v_us = 1.650876718717434e+01
+ngspice-41 done

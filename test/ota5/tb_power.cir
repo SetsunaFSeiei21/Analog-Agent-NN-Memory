@@ -1,0 +1,108 @@
+SKY130 5T OTA Static Power Testbench
+
+* ============================================================
+* PDK
+* ============================================================
+
+.lib "/public/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+
+
+.include "five_t_ota.sp"
+.include "ota_params.sp"
+.include "sim_params.sp"
+
+
+* ============================================================
+* Supply / Bias
+* ============================================================
+
+VDD_SRC VDD 0 DC {VDD_VAL}
+
+VBIAS_SRC VBIAS 0 DC {VBIAS_VAL}
+
+
+* ============================================================
+* Inputs
+*
+* Zero differential input
+* ============================================================
+
+VINP_SRC INP 0 DC {VCM_VAL}
+
+VINN_SRC INN 0 DC {VCM_VAL}
+
+
+* ============================================================
+* DUT
+* ============================================================
+
+XOTA INP INN OUT VDD 0 VBIAS FIVE_T_OTA
++ WIN={WIN_VAL}
++ LIN={LIN_VAL}
++ WLOAD={WLOAD_VAL}
++ LLOAD={LLOAD_VAL}
++ WTAIL={WTAIL_VAL}
++ LTAIL={LTAIL_VAL}
+
+
+CLOAD OUT 0 {CL_VAL}
+
+
+* ============================================================
+* Operating Point
+* ============================================================
+
+.op
+
+
+.control
+
+run
+
+set wr_vecnames
+option numdgt=15
+
+
+* ============================================================
+* Supply Current
+*
+* ngspice defines current through an independent voltage
+* source from its + terminal to its - terminal.
+*
+* Therefore a power-supplying VDD source normally has
+* negative i(VDD_SRC).
+* ============================================================
+
+let idd_a = -i(VDD_SRC)
+
+let idd_ua = idd_a*1e6
+
+
+* ============================================================
+* Static Power
+* ============================================================
+
+let power_w = idd_a*v(VDD)
+
+let power_uw = power_w*1e6
+
+
+echo ========================================
+echo STATIC POWER
+echo ========================================
+
+print idd_a
+print idd_ua
+
+print power_w
+print power_uw
+
+
+wrdata power_result.txt idd_ua power_uw
+
+
+quit
+
+.endc
+
+.end

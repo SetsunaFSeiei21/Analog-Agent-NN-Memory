@@ -1,0 +1,120 @@
+SKY130 5T OTA PMRR+ Testbench
+
+* ============================================================
+* PDK
+* ============================================================
+
+.lib "/public/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+
+
+.include "five_t_ota.sp"
+.include "ota_params.sp"
+.include "sim_params.sp"
+
+
+* ============================================================
+* Shared Bias
+* ============================================================
+
+VBIAS_SRC VBIAS 0 DC {VBIAS_VAL}
+
+
+* ============================================================
+* DUT 1: Differential Gain Reference
+* ============================================================
+
+VDD_DIFF VDD_DIFF 0 DC {VDD_VAL}
+
+VINP_DIFF INP_DIFF 0 DC {VCM_VAL} AC 0.5 0
+VINN_DIFF INN_DIFF 0 DC {VCM_VAL} AC 0.5 180
+
+
+XOTA_DIFF INP_DIFF INN_DIFF OUT_DIFF VDD_DIFF 0 VBIAS FIVE_T_OTA
++ WIN={WIN_VAL}
++ LIN={LIN_VAL}
++ WLOAD={WLOAD_VAL}
++ LLOAD={LLOAD_VAL}
++ WTAIL={WTAIL_VAL}
++ LTAIL={LTAIL_VAL}
+
+
+CLOAD_DIFF OUT_DIFF 0 {CL_VAL}
+
+
+* ============================================================
+* DUT 2: Positive Supply Ripple
+*
+* VDD AC magnitude = 1 V
+*
+* Input differential AC = 0
+* ============================================================
+
+VDD_PMRR VDD_PMRR 0 DC {VDD_VAL} AC 1 0
+
+VINP_PMRR INP_PMRR 0 DC {VCM_VAL}
+VINN_PMRR INN_PMRR 0 DC {VCM_VAL}
+
+
+XOTA_PMRR INP_PMRR INN_PMRR OUT_PMRR VDD_PMRR 0 VBIAS FIVE_T_OTA
++ WIN={WIN_VAL}
++ LIN={LIN_VAL}
++ WLOAD={WLOAD_VAL}
++ LLOAD={LLOAD_VAL}
++ WTAIL={WTAIL_VAL}
++ LTAIL={LTAIL_VAL}
+
+
+CLOAD_PMRR OUT_PMRR 0 {CL_VAL}
+
+
+* ============================================================
+* AC Analysis
+* ============================================================
+
+.ac dec 100 1 1G
+
+
+.control
+
+run
+
+set wr_singlescale
+set wr_vecnames
+option numdgt=15
+
+
+let ad_db = db(v(OUT_DIFF))
+
+let avdd_db = db(v(OUT_PMRR))
+
+let pmrr_curve_db = ad_db - avdd_db
+
+
+* ============================================================
+* Low-frequency PMRR
+* ============================================================
+
+meas ac ad_dc_db FIND ad_db AT=1
+
+meas ac avdd_dc_db FIND avdd_db AT=1
+
+meas ac pmrr_db FIND pmrr_curve_db AT=1
+
+
+echo ========================================
+echo PMRR+
+echo ========================================
+
+print ad_dc_db
+print avdd_dc_db
+print pmrr_db
+
+
+wrdata pmrr_response.txt ad_db avdd_db pmrr_curve_db
+
+
+quit
+
+.endc
+
+.end

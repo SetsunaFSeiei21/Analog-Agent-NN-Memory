@@ -1,0 +1,21 @@
+
+Note: No compatibility mode selected!
+
+
+Circuit: sky130 5t ota ac testbench
+
+Doing analysis at TEMP = 27.000000 and TNOM = 27.000000
+
+
+No. of Data Rows : 901
+dc_gain_db          =  3.740415e+01
+gbw_hz              =  6.972219e+06
+phase_at_gbw_deg    =  -9.435193e+01
+========================================
+AC PERFORMANCE
+========================================
+dc_gain_db = 3.740415000000000e+01
+gbw_hz = 6.972219000000000e+06
+phase_at_gbw_deg = -9.43519300000000e+01
+phase_margin_deg = 8.564807000000000e+01
+ngspice-41 done

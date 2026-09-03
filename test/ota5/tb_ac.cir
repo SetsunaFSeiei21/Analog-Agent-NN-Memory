@@ -1,0 +1,137 @@
+SKY130 5T OTA AC Testbench
+
+* ============================================================
+* PDK
+* ============================================================
+
+.lib "/public/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+
+
+* ============================================================
+* DUT / Parameters
+* ============================================================
+
+.include "five_t_ota.sp"
+.include "ota_params.sp"
+.include "sim_params.sp"
+
+
+* ============================================================
+* Supply / Bias
+* ============================================================
+
+VDD_SRC VDD 0 DC {VDD_VAL}
+VBIAS_SRC VBIAS 0 DC {VBIAS_VAL}
+
+
+* ============================================================
+* Differential AC excitation
+*
+* VINP = +0.5
+* VINN = -0.5
+*
+* Therefore differential AC input magnitude = 1 V.
+* ============================================================
+
+VINP_SRC INP 0 DC {VCM_VAL} AC 0.5 0
+VINN_SRC INN 0 DC {VCM_VAL} AC 0.5 180
+
+
+* ============================================================
+* DUT
+* ============================================================
+
+XOTA INP INN OUT VDD 0 VBIAS FIVE_T_OTA
++ WIN={WIN_VAL}
++ LIN={LIN_VAL}
++ WLOAD={WLOAD_VAL}
++ LLOAD={LLOAD_VAL}
++ WTAIL={WTAIL_VAL}
++ LTAIL={LTAIL_VAL}
+
+
+* ============================================================
+* Load
+* ============================================================
+
+CLOAD OUT 0 {CL_VAL}
+
+
+* ============================================================
+* AC Analysis
+* ============================================================
+
+.ac dec 100 1 1G
+
+
+.control
+
+run
+
+set wr_singlescale
+set wr_vecnames
+option numdgt=15
+
+
+* ============================================================
+* Derived vectors
+* ============================================================
+
+let gain_db = db(v(OUT))
+
+* phase() is rad -> convert to degree explicitly
+let phase_deg = 180/pi*phase(v(OUT))
+
+
+* ============================================================
+* DC / Low-frequency Gain
+* ============================================================
+
+meas ac dc_gain_db FIND gain_db AT=1
+
+
+* ============================================================
+* GBW
+*
+* First falling crossing through 0 dB
+* ============================================================
+
+meas ac gbw_hz WHEN gain_db=0 FALL=1
+
+
+* ============================================================
+* Phase at GBW
+* ============================================================
+
+meas ac phase_at_gbw_deg FIND phase_deg WHEN gain_db=0 FALL=1
+
+
+* ============================================================
+* Phase Margin
+* ============================================================
+
+let phase_margin_deg = 180 + phase_at_gbw_deg
+
+
+echo ========================================
+echo AC PERFORMANCE
+echo ========================================
+
+print dc_gain_db
+print gbw_hz
+print phase_at_gbw_deg
+print phase_margin_deg
+
+
+* ============================================================
+* Save full response
+* ============================================================
+
+wrdata ac_response.txt gain_db phase_deg
+
+
+quit
+
+.endc
+
+.end
