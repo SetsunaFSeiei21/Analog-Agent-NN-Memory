@@ -1,42 +1,27 @@
-from typing import Dict
+import re
+
 from pathlib import Path
-import re, subprocess
+from typing import List, Tuple
 
-FILE_NAME = "ota_params.sp"
-
-def simulate(params: Dict[str, float], path: Path) -> float:
+class SpectreSizingSimulator:
     
-    params_path = path / FILE_NAME
-    log_path = path / "logs" / "ac.log"
-    if not params_path.exists():
-        raise FileNotFoundError(f"{FILE_NAME} not found in {path}")
-    content = params_path.read_text()
-    for param, val in params.items():
-        pattern = rf"(\.param\s+{param}\s*=\s*)\S+"
-        content = re.sub(pattern, rf"\g<1>{val}", content)
-    params_path.write_text(content)
-    subprocess.run([
-        "ngspice", "-b", "-o", "logs/ac.log", "tb_ac.cir"
-    ], cwd=path, check=True
-    )
-    if not log_path.exists():
-        raise FileNotFoundError(f"ac.log not found in {str(log_path)}")
-    metric_content = log_path.read_text()
-    pattern = r"(dc_gain_db\s*=\s*\S+)"
-    all_dc_gain = re.findall(pattern, metric_content)
-    if len(all_dc_gain) == 0:
-        raise ValueError("Can not get dc_gain_db")
-    dc_gain: str = all_dc_gain[0]
-    dc_gain = dc_gain.split("=")[1].strip()
-    
-    return float(dc_gain)
-    
-if __name__  == '__main__':
-    simulate(
-        {
-            "WIN_VAL": 5,
-            "WLOAD_VAL": 10,
-            "WTAIL_VAL": 10
-        },
-        Path("./test/ota5")
-    )
+    def __init__(self, path: Path):
+        
+        self.path = path
+        self.bounds, self.param_order = self._get_bounds()
+        
+    def _get_bounds(self) -> Tuple[List[Tuple[float, float]], List[str]]:
+        
+        param_file = self.path / "ota_params.sp"
+        if not param_file.exists():
+            raise FileNotFoundError(f"ota_params.sp not found in {self.path}")
+        content = param_file.read_text()
+        lines = content.splitlines()
+        pattern = r"\.param\s+(?P<param_name>\w+)\s*="
+        param_lst = re.findall(pattern, content)
+        print(param_lst)
+        
+        return [], []
+        
+if __name__ == '__main__':
+    spec = SpectreSizingSimulator(Path("test/ota5"))
