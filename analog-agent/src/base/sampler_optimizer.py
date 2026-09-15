@@ -4,11 +4,12 @@ from abc import ABC, abstractmethod
 
 class Sampler_Optimizer(ABC):
     
-    def __init__(self, circuit_param_path: Path, parameter_name_lst: Sequence[str], bounds: Sequence[Tuple[float, float]], seed: int = 42) -> None:
+    def __init__(self, circuit_param_path: Path, parameter_name_lst: Sequence[str], bounds: Sequence[Tuple[float, float, float]], seed: int = 42) -> None:
         
         self.circuit_param_path = circuit_param_path
         self.parameter_name_lst: List[str] = list(parameter_name_lst)
         self.bounds: List[Tuple[float, float]] = list(bounds)
+        self.seed = seed
         assert len(self.parameter_name_lst) == len(self.bounds), f"parameter_name_lst的长度必须等于bounds的长度!但parameter_name_lst的长度为{len(parameter_name_lst)}, bounds的长度为{len(bounds)}"
         
     def rewrite_param(self, value_lst: List[float]) -> None:
@@ -26,7 +27,7 @@ class Sampler_Optimizer(ABC):
             f.write(content_text)
     
     @abstractmethod
-    def generate_sample_point(self, n_point: int) -> List[List[float]]:
+    def generate_sample_point(self, n_point: int, n_wrokers: int) -> List[List[float]]:
         
         "生成采样点"
         raise NotImplementedError
