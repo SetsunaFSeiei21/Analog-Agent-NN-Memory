@@ -27,7 +27,7 @@ class Sampler_Optimizer(ABC):
             f.write(content_text)
     
     @abstractmethod
-    def generate_sample_point(self, n_point: int, n_wrokers: int) -> List[List[float]]:
+    def generate_sample_point(self, n_point: int, n_workers: int) -> List[List[float]]:
         
         "生成采样点"
         raise NotImplementedError
