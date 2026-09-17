@@ -12,5 +12,5 @@
     "AC_START": 1,
     "AC_STOP": "100G",
     "GAIN_MEASURE_FREQ": 1,
-    "AC_OUTPUT_PATH": "ac_response.txt"
+    "OUTPUT_PATH": "ac_response.txt"
 }

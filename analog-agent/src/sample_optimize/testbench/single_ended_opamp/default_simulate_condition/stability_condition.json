@@ -11,5 +11,5 @@
     "AC_POINTS_PER_DEC": 100,
     "AC_START": 1,
     "AC_STOP": "1G",
-    "STABILITY_OUTPUT_PATH": "stability_response.txt"
+    "OUTPUT_PATH": "stability_response.txt"
 }

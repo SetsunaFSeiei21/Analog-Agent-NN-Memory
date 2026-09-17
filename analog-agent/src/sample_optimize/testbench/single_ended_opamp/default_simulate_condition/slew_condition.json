@@ -26,5 +26,5 @@
     "HIGH_AVG_STOP": "4u",
     "RISE_SEARCH_START": "0.9u",
     "FALL_SEARCH_START": "4.9u",
-    "SLEW_OUTPUT_PATH": "slew_response.txt"
+    "OUTPUT_PATH": "slew_response.txt"
 }

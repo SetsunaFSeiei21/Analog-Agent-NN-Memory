@@ -7,5 +7,5 @@
     "VSS": 0.0,
     "VCM": 0.9,
     "IBIAS": "10u",
-    "POWER_OUTPUT_PATH": "power_result.txt"
+    "OUTPUT_PATH": "power_result.txt"
 }

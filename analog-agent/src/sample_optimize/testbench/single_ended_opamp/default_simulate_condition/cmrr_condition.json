@@ -12,5 +12,5 @@
     "AC_START": 1,
     "AC_STOP": "1G",
     "CMRR_MEASURE_FREQ": 1,
-    "CMRR_OUTPUT_PATH": "cmrr_response.txt"
+    "OUTPUT_PATH": "cmrr_response.txt"
 }
