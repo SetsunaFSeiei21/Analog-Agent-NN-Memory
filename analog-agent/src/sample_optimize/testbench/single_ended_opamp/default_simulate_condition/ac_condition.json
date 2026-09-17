@@ -1,0 +1,16 @@
+{
+    "PDK_PATH": "/public/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice",
+    "CORNER": "tt",
+    "DUT_PATH": "dut_wrapper.sp",
+    "TEMP": 27,
+    "VDD": 1.8,
+    "VSS": 0.0,
+    "VCM": 0.9,
+    "IBIAS": "10u",
+    "CL": "1p",
+    "AC_POINTS_PER_DEC": 100,
+    "AC_START": 1,
+    "AC_STOP": "100G",
+    "GAIN_MEASURE_FREQ": 1,
+    "AC_OUTPUT_PATH": "ac_response.txt"
+}
