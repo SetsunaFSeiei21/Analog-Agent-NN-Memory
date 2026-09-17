@@ -1,0 +1,266 @@
+Generic Single-Ended OpAmp Slew Rate Testbench
+
+* ============================================================
+* Standard DUT interface:
+*
+* .subckt DUT VINP VINN VOUT VDD VSS IBIAS
+*
+* Measurements:
+*
+*   Rising Slew Rate
+*   Falling Slew Rate
+*
+* Method:
+*
+*   DUT is configured as a unity-gain follower.
+*
+*   SR_rise = 0.8 * VOUT_SWING / t_10_90
+*
+*   SR_fall = 0.8 * VOUT_SWING / t_90_10
+*
+* ============================================================
+
+
+* ============================================================
+* PDK / DUT
+* ============================================================
+
+.lib "{{PDK_PATH}}" {{CORNER}}
+
+.include "{{DUT_PATH}}"
+
+
+* ============================================================
+* Temperature
+* ============================================================
+
+.temp {{TEMP}}
+
+
+* ============================================================
+* Power Supply
+* ============================================================
+
+VDD_SRC VDD 0 DC {{VDD}}
+
+VSS_SRC VSS 0 DC {{VSS}}
+
+
+* ============================================================
+* Bias Current
+* ============================================================
+
+IBIAS_SRC VDD IBIAS DC {{IBIAS}}
+
+
+* ============================================================
+* Large-Signal Step Input
+*
+* PULSE:
+*
+*   VIN_LOW       low input voltage
+*   VIN_HIGH      high input voltage
+*   PULSE_DELAY   first rising-edge delay
+*   INPUT_TR      input rise time
+*   INPUT_TF      input fall time
+*   PULSE_WIDTH   high-level duration
+*   PULSE_PERIOD  period
+*
+* INPUT_TR and INPUT_TF must be much shorter than the
+* expected op-amp slew transition.
+* ============================================================
+
+VIN_SRC IN 0 PULSE(
++ {{VIN_LOW}}
++ {{VIN_HIGH}}
++ {{PULSE_DELAY}}
++ {{INPUT_TR}}
++ {{INPUT_TF}}
++ {{PULSE_WIDTH}}
++ {{PULSE_PERIOD}}
++ )
+
+
+* ============================================================
+* DUT
+*
+* Unity-gain follower:
+*
+*   VINP = IN
+*   VINN = OUT
+* ============================================================
+
+XDUT
++ IN
++ OUT
++ OUT
++ VDD
++ VSS
++ IBIAS
++ DUT
+
+
+* ============================================================
+* Load
+* ============================================================
+
+VLOAD_REF LOAD_REF 0 DC {{LOAD_REF}}
+
+RLOAD OUT LOAD_REF {{RL}}
+
+CLOAD OUT LOAD_REF {{CL}}
+
+
+* ============================================================
+* Transient Analysis
+*
+* TRAN_MAX_STEP should be sufficiently small to accurately
+* resolve the slew transition.
+* ============================================================
+
+.tran {{TRAN_STEP}} {{TRAN_STOP}} 0 {{TRAN_MAX_STEP}}
+
+
+* ============================================================
+* Control
+* ============================================================
+
+.control
+
+run
+
+set wr_singlescale
+set wr_vecnames
+
+option numdgt=15
+
+
+* ============================================================
+* Determine Actual Settled Output Levels
+*
+* Using output levels rather than assuming:
+*
+*   VOUT_LOW  = VIN_LOW
+*   VOUT_HIGH = VIN_HIGH
+*
+* makes the measurement more robust against DC offset
+* and finite closed-loop error.
+* ============================================================
+
+meas tran vout_low
++ AVG v(OUT)
++ FROM={{LOW_AVG_START}}
++ TO={{LOW_AVG_STOP}}
+
+meas tran vout_high
++ AVG v(OUT)
++ FROM={{HIGH_AVG_START}}
++ TO={{HIGH_AVG_STOP}}
+
+
+* ============================================================
+* Actual Output Swing
+* ============================================================
+
+let vout_swing = vout_high - vout_low
+
+
+* ============================================================
+* 10% / 90% Thresholds
+* ============================================================
+
+let vout_10 = vout_low + 0.1 * vout_swing
+
+let vout_90 = vout_low + 0.9 * vout_swing
+
+
+* ============================================================
+* Rising Transition
+*
+* Measure output from 10% to 90%.
+* ============================================================
+
+meas tran rise_10_90
++ TRIG v(OUT)
++ VAL=vout_10
++ TD={{RISE_SEARCH_START}}
++ RISE=1
++ TARG v(OUT)
++ VAL=vout_90
++ RISE=1
+
+
+* ============================================================
+* Falling Transition
+*
+* Measure output from 90% to 10%.
+* ============================================================
+
+meas tran fall_90_10
++ TRIG v(OUT)
++ VAL=vout_90
++ TD={{FALL_SEARCH_START}}
++ FALL=1
++ TARG v(OUT)
++ VAL=vout_10
++ FALL=1
+
+
+* ============================================================
+* Slew Rate
+*
+* 10% -> 90% corresponds to 80% of output swing.
+*
+* Time returned by ngspice is in seconds.
+*
+* Divide by 1e6 to convert:
+*
+*   V/s -> V/us
+* ============================================================
+
+let slew_delta_v = 0.8 * vout_swing
+
+let slew_rise_v_us = (
++ slew_delta_v
++ / rise_10_90
++ / 1e6
++ )
+
+let slew_fall_v_us = (
++ slew_delta_v
++ / fall_90_10
++ / 1e6
++ )
+
+
+* ============================================================
+* Output
+* ============================================================
+
+echo ========================================
+echo SLEW RATE
+echo ========================================
+
+print vout_low
+print vout_high
+
+print rise_10_90
+print fall_90_10
+
+print slew_rise_v_us
+print slew_fall_v_us
+
+
+* ============================================================
+* Save Full Transient Response
+* ============================================================
+
+wrdata "{{SLEW_OUTPUT_PATH}}" v(IN) v(OUT)
+
+
+quit
+
+.endc
+
+
+.end

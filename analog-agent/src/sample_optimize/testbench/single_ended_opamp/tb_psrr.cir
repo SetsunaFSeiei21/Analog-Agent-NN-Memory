@@ -1,0 +1,260 @@
+* ============================================================
+* Generic Single-Ended OpAmp PSRR Testbench
+*
+* Standard DUT interface:
+*
+* .subckt DUT VINP VINN VOUT VDD VSS IBIAS
+*
+* Metrics:
+*
+*   PSRR+
+*   PSRR-
+*
+* Definitions:
+*
+*   PSRR+ = |VDD_ripple / VOS+|
+*
+*   PSRR- = |VSS_ripple / VOS-|
+*
+* Both DUTs operate as unity-gain followers.
+* ============================================================
+
+
+* ============================================================
+* PDK / DUT
+* ============================================================
+
+.lib "{{PDK_PATH}}" {{CORNER}}
+
+.include "{{DUT_PATH}}"
+
+
+* ============================================================
+* Temperature
+* ============================================================
+
+.temp {{TEMP}}
+
+
+
+* ============================================================
+* PSRR+ TEST
+*
+* Positive supply:
+*
+*   DC = VDD
+*   AC = 1 V
+*
+* Negative supply:
+*
+*   DC = VSS
+*   AC = 0
+*
+* VINP = VCM
+* VINN = VOUT
+*
+* Therefore DUT operates as a unity-gain follower.
+* ============================================================
+
+
+* Positive supply with 1-V AC ripple
+
+VDD_P_SRC VDD_P 0 DC {{VDD}} AC 1 0
+
+
+* Quiet negative supply
+
+VSS_P_SRC VSS_P 0 DC {{VSS}}
+
+
+* Fixed non-inverting input
+
+VINP_P_SRC INP_P 0 DC {{VCM}}
+
+
+* Bias current
+
+IBIAS_P_SRC VDD_P IBIAS_P DC {{IBIAS}}
+
+
+* DUT
+*
+* VINP = INP_P
+* VINN = OUT_P
+* VOUT = OUT_P
+
+XDUT_P
++ INP_P
++ OUT_P
++ OUT_P
++ VDD_P
++ VSS_P
++ IBIAS_P
++ DUT
+
+
+* Output load
+
+CLOAD_P OUT_P 0 {{CL}}
+
+
+
+* ============================================================
+* PSRR- TEST
+*
+* Positive supply:
+*
+*   DC = VDD
+*   AC = 0
+*
+* Negative supply:
+*
+*   DC = VSS
+*   AC = 1 V
+*
+* VINP = VCM
+* VINN = VOUT
+*
+* ============================================================
+
+
+* Quiet positive supply
+
+VDD_N_SRC VDD_N 0 DC {{VDD}}
+
+
+* Negative supply with 1-V AC ripple
+
+VSS_N_SRC VSS_N 0 DC {{VSS}} AC 1 0
+
+
+* Fixed non-inverting input
+
+VINP_N_SRC INP_N 0 DC {{VCM}}
+
+
+* Bias current
+
+IBIAS_N_SRC VDD_N IBIAS_N DC {{IBIAS}}
+
+
+* DUT
+
+XDUT_N
++ INP_N
++ OUT_N
++ OUT_N
++ VDD_N
++ VSS_N
++ IBIAS_N
++ DUT
+
+
+* Output load
+
+CLOAD_N OUT_N 0 {{CL}}
+
+
+
+* ============================================================
+* AC Analysis
+* ============================================================
+
+.ac dec {{AC_POINTS_PER_DEC}} {{AC_START}} {{AC_STOP}}
+
+
+
+* ============================================================
+* Control
+* ============================================================
+
+.control
+
+run
+
+set wr_singlescale
+set wr_vecnames
+option numdgt=15
+
+
+
+* ============================================================
+* PSRR+
+*
+* Input-referred offset:
+*
+* VOS+ = VINP - VINN
+*
+* Since VINN = VOUT:
+*
+* VOS+ = VINP - VOUT
+*
+* Supply AC excitation = VDD_P = 1 V
+* ============================================================
+
+let vos_plus = v(INP_P) - v(OUT_P)
+
+let psrr_plus = v(VDD_P) / vos_plus
+
+let psrr_plus_db = db(psrr_plus)
+
+
+
+* ============================================================
+* PSRR-
+*
+* VOS- = VINP - VINN
+*
+* Supply AC excitation = VSS_N = 1 V
+* ============================================================
+
+let vos_minus = v(INP_N) - v(OUT_N)
+
+let psrr_minus = v(VSS_N) / vos_minus
+
+let psrr_minus_db = db(psrr_minus)
+
+
+
+* ============================================================
+* Reference PSRR Values
+* ============================================================
+
+meas ac psrr_plus_ref_db
++ FIND psrr_plus_db
++ AT={{PSRR_MEASURE_FREQ}}
+
+meas ac psrr_minus_ref_db
++ FIND psrr_minus_db
++ AT={{PSRR_MEASURE_FREQ}}
+
+
+
+* ============================================================
+* Output
+* ============================================================
+
+echo ========================================
+echo POWER SUPPLY REJECTION RATIO
+echo ========================================
+
+print psrr_plus_ref_db
+print psrr_minus_ref_db
+
+
+
+* ============================================================
+* Save Full Frequency Response
+* ============================================================
+
+wrdata "{{PSRR_OUTPUT_PATH}}"
++ psrr_plus_db
++ psrr_minus_db
+
+
+quit
+
+.endc
+
+
+.end

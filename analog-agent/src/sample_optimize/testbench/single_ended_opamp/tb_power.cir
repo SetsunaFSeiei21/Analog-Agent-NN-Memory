@@ -1,0 +1,201 @@
+* ============================================================
+* Generic Single-Ended OpAmp Quiescent Power Testbench
+*
+* Standard DUT interface:
+*
+* .subckt DUT VINP VINN VOUT VDD VSS IBIAS
+*
+* Measurements:
+*
+*   Positive-rail supply current
+*   Negative-rail supply current
+*   Total quiescent supply power
+*
+* Test condition:
+*
+*   No dynamic input
+*   No resistive output load
+*   Unity-gain follower
+*
+* ============================================================
+
+
+* ============================================================
+* PDK / DUT
+* ============================================================
+
+.lib "{{PDK_PATH}}" {{CORNER}}
+
+.include "{{DUT_PATH}}"
+
+
+* ============================================================
+* Temperature
+* ============================================================
+
+.temp {{TEMP}}
+
+
+* ============================================================
+* Power Supplies
+* ============================================================
+
+VDD_SRC VDD 0 DC {{VDD}}
+
+VSS_SRC VSS 0 DC {{VSS}}
+
+
+* ============================================================
+* Bias Current
+*
+* Positive IBIAS flows:
+*
+*   VDD -> IBIAS -> DUT
+*
+* Since IBIAS is supplied from the VDD rail,
+* its current is included in the current measured
+* through VDD_SRC.
+* ============================================================
+
+IBIAS_SRC VDD IBIAS DC {{IBIAS}}
+
+
+* ============================================================
+* Input / Operating Point
+*
+* DUT is configured as a unity-gain follower:
+*
+*   VINP = VCM
+*   VINN = VOUT
+*
+* This keeps the amplifier in its normal linear
+* operating region at the specified common-mode level.
+* ============================================================
+
+VINP_SRC INP 0 DC {{VCM}}
+
+
+* ============================================================
+* DUT
+* ============================================================
+
+XDUT
++ INP
++ OUT
++ OUT
++ VDD
++ VSS
++ IBIAS
++ DUT
+
+
+* ============================================================
+* Operating Point Analysis
+* ============================================================
+
+.op
+
+
+* ============================================================
+* Control
+* ============================================================
+
+.control
+
+run
+
+set wr_vecnames
+option numdgt=15
+
+
+* ============================================================
+* Supply Currents
+*
+* ngspice defines current through a voltage source
+* from its positive terminal to its negative terminal.
+*
+* For the positive supply, a source delivering current
+* normally has negative i(VDD_SRC).
+* ============================================================
+
+let idd_a = -i(VDD_SRC)
+
+let iss_a = i(VSS_SRC)
+
+let idd_ua = idd_a * 1e6
+
+let iss_ua = iss_a * 1e6
+
+
+* ============================================================
+* Supply Power
+*
+* Power delivered by an independent voltage source:
+*
+*   Psource = -V * I
+*
+* This form also works for a negative VSS supply.
+*
+* Example:
+*
+*   VDD = +1.8 V
+*   VSS = -1.8 V
+*
+* Both supply contributions become positive when
+* the sources deliver power to the DUT.
+* ============================================================
+
+let p_vdd_w = -v(VDD) * i(VDD_SRC)
+
+let p_vss_w = -v(VSS) * i(VSS_SRC)
+
+let power_w = p_vdd_w + p_vss_w
+
+let p_vdd_uw = p_vdd_w * 1e6
+
+let p_vss_uw = p_vss_w * 1e6
+
+let power_uw = power_w * 1e6
+
+
+* ============================================================
+* Output
+* ============================================================
+
+echo ========================================
+echo QUIESCENT POWER
+echo ========================================
+
+print v(INP)
+print v(OUT)
+
+print idd_a
+print iss_a
+
+print idd_ua
+print iss_ua
+
+print p_vdd_uw
+print p_vss_uw
+
+print power_uw
+
+
+* ============================================================
+* Save Results
+* ============================================================
+
+wrdata "{{POWER_OUTPUT_PATH}}"
++ idd_ua
++ iss_ua
++ p_vdd_uw
++ p_vss_uw
++ power_uw
+
+
+quit
+
+.endc
+
+
+.end

@@ -1,0 +1,182 @@
+* ============================================================
+* Generic Single-Ended OpAmp Stability Testbench
+*
+* Standard DUT interface:
+* .subckt DUT VINP VINN VOUT VDD VSS IBIAS
+*
+* Configuration:
+*   Unity-gain negative feedback
+*
+* Metrics:
+*   Loop Gain
+*   Unity Loop-Gain Frequency
+*   Phase Margin
+* ============================================================
+
+
+* ============================================================
+* PDK / DUT
+* ============================================================
+
+.lib "{{PDK_PATH}}" {{CORNER}}
+
+.include "{{DUT_PATH}}"
+
+
+* ============================================================
+* Temperature
+* ============================================================
+
+.temp {{TEMP}}
+
+
+* ============================================================
+* Supply
+* ============================================================
+
+VDD_SRC VDD 0 DC {{VDD}}
+VSS_SRC VSS 0 DC {{VSS}}
+
+
+* ============================================================
+* Bias Current
+* ============================================================
+
+IBIAS_SRC VDD IBIAS DC {{IBIAS}}
+
+
+* ============================================================
+* Non-Inverting Input
+* ============================================================
+
+VINP_SRC INP VSS DC {{VCM}}
+
+
+* ============================================================
+* Loop Break / AC Injection
+*
+* DC:
+*   LFB -> short
+*   CINJ -> open
+*
+* Therefore:
+*   INN = OUT
+*
+* and the DUT remains in unity-feedback bias condition.
+*
+* AC:
+*   LFB -> high impedance
+*   CINJ -> low impedance
+*
+* VINJ injects a 1-V AC perturbation into INN.
+* ============================================================
+
+VINJ INJ VSS DC 0 AC 1
+
+CINJ INJ INN 1
+
+LFB OUT INN 1e12
+
+
+* ============================================================
+* DUT
+* ============================================================
+
+XDUT INP INN OUT VDD VSS IBIAS DUT
+
+
+* ============================================================
+* Output Load
+* ============================================================
+
+CLOAD OUT VSS {{CL}}
+
+
+* ============================================================
+* AC Analysis
+* ============================================================
+
+.ac dec {{AC_POINTS_PER_DEC}} {{AC_START}} {{AC_STOP}}
+
+
+* ============================================================
+* Control
+* ============================================================
+
+.control
+
+run
+
+set wr_singlescale
+set wr_vecnames
+option numdgt=15
+
+
+* ============================================================
+* Loop Gain
+*
+* Vinp(ac) = 0
+*
+* A = Vout / (Vinp - Vinn)
+*
+* Therefore:
+*
+* A = -Vout / Vinn
+*
+* For unity feedback:
+*
+* L = A
+* ============================================================
+
+let loop_gain = -v(OUT) / v(INN)
+
+let loop_gain_db = db(loop_gain)
+
+let loop_phase_deg = 180/pi*cph(loop_gain)
+
+
+* ============================================================
+* Unity Loop-Gain Frequency
+* ============================================================
+
+meas ac loop_ugf_hz WHEN loop_gain_db=0 FALL=1
+
+
+* ============================================================
+* Phase at Unity Loop-Gain Frequency
+* ============================================================
+
+meas ac phase_at_ugf_deg FIND loop_phase_deg WHEN loop_gain_db=0 FALL=1
+
+
+* ============================================================
+* Phase Margin
+*
+* PM = 180 deg + phase(L) at |L| = 1
+* ============================================================
+
+let phase_margin_deg = 180 + phase_at_ugf_deg
+
+
+* ============================================================
+* Output
+* ============================================================
+
+print loop_ugf_hz
+print phase_at_ugf_deg
+print phase_margin_deg
+
+
+* ============================================================
+* Save Full Loop-Gain Response
+* ============================================================
+
+wrdata "{{STABILITY_OUTPUT_PATH}}" loop_gain_db loop_phase_deg
+
+
+quit
+
+.endc
+
+
+.end
