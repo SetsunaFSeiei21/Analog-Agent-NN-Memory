@@ -1,7 +1,6 @@
 {
     "PDK_PATH": "/public/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice",
     "CORNER": "tt",
-    "DUT_PATH": "dut_wrapper.sp",
     "TEMP": 27,
     "VDD": 1.8,
     "VSS": 0.0,

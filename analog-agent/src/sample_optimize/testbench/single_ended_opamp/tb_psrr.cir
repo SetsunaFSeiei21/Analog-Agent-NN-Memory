@@ -247,7 +247,7 @@ print psrr_minus_ref_db
 * Save Full Frequency Response
 * ============================================================
 
-wrdata "{{PSRR_OUTPUT_PATH}}"
+wrdata "{{OUTPUT_PATH}}"
 + psrr_plus_db
 + psrr_minus_db
 

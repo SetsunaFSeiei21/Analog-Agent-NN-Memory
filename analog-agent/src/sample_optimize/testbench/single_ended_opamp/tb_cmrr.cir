@@ -284,7 +284,7 @@ print cmrr_ref_db
 * Save Full Frequency Response
 * ============================================================
 
-wrdata "{{CMRR_OUTPUT_PATH}}" adm_db acm_db cmrr_db
+wrdata "{{OUTPUT_PATH}}" adm_db acm_db cmrr_db
 
 
 quit

@@ -185,7 +185,7 @@ print power_uw
 * Save Results
 * ============================================================
 
-wrdata "{{POWER_OUTPUT_PATH}}"
+wrdata "{{OUTPUT_PATH}}"
 + idd_ua
 + iss_ua
 + p_vdd_uw

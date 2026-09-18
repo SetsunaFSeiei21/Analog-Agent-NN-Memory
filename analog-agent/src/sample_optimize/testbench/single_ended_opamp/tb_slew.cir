@@ -255,7 +255,7 @@ print slew_fall_v_us
 * Save Full Transient Response
 * ============================================================
 
-wrdata "{{SLEW_OUTPUT_PATH}}" v(IN) v(OUT)
+wrdata "{{OUTPUT_PATH}}" v(IN) v(OUT)
 
 
 quit
