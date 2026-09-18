@@ -1,10 +1,12 @@
 import numpy as np
 
-from ..base import Sampler_Optimizer
+from ..base import Sampler_Optimizer as _Sampler_Optimizer
 from pathlib import Path
 from typing import Sequence, Tuple
 
-class LHS_Sampler(Sampler_Optimizer):
+__all__ = ['LHS_Sampler']
+
+class LHS_Sampler(_Sampler_Optimizer):
     
     def __init__(
         self,

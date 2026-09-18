@@ -47,6 +47,8 @@
 
 VDD_SRC VDD 0 DC {{VDD}}
 
+VSS_SRC VSS 0 DC {{VSS}}
+
 
 * ============================================================
 * COMMON-MODE GAIN TEST
@@ -79,6 +81,7 @@ VAC_CM CM_AC 0 DC 0 AC 1
 * DC common-mode references
 
 VCM_CM_P CM_DC_P 0 DC {{VCM}}
+
 VCM_CM_N CM_DC_N 0 DC {{VCM}}
 
 
@@ -104,7 +107,7 @@ XDUT_CM
 + INN_CM
 + OUT_CM
 + VDD
-+ 0
++ VSS
 + IBIAS_CM_NODE
 + DUT
 
@@ -116,7 +119,7 @@ LFB_CM OUT_CM INN_CM 1T
 
 * Output load
 
-CLOAD_CM OUT_CM 0 {{CL}}
+CLOAD_CM OUT_CM VSS {{CL}}
 
 
 
@@ -151,6 +154,7 @@ VAC_DM DM_AC 0 DC 0 AC 1
 * DC common-mode references
 
 VCM_DM_P DM_DC_P 0 DC {{VCM}}
+
 VCM_DM_N DM_DC_N 0 DC {{VCM}}
 
 
@@ -176,7 +180,7 @@ XDUT_DM
 + INN_DM
 + OUT_DM
 + VDD
-+ 0
++ VSS
 + IBIAS_DM_NODE
 + DUT
 
@@ -188,7 +192,7 @@ LFB_DM OUT_DM INN_DM 1T
 
 * Output load
 
-CLOAD_DM OUT_DM 0 {{CL}}
+CLOAD_DM OUT_DM VSS {{CL}}
 
 
 

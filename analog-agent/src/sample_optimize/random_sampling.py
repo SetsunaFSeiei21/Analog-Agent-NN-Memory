@@ -4,10 +4,11 @@ from multiprocessing import Pool
 from pathlib import Path
 from typing import List, Sequence, Tuple
 
-from ..base import Sampler_Optimizer
+from ..base import Sampler_Optimizer as _Sampler_Optimizer
 
+__all__ = ["Random_Sampler"]
 
-class Random_Sampler(Sampler_Optimizer):
+class Random_Sampler(_Sampler_Optimizer):
 
     def __init__(
         self,

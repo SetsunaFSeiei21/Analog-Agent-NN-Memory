@@ -7,7 +7,7 @@ import subprocess
 import numpy as np
 
 from pathlib import Path
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Tuple
 from concurrent.futures import ProcessPoolExecutor
 
 
@@ -20,7 +20,7 @@ SINGLE_OPAMP_METRIC2METRIC = {
     "N_PSRR": "PSRR_Minus_dB",
     "P_SR": "Slew_Rise_V_us",
     "N_SR": "Slew_Fall_V_us",
-    "POWER": "Power_Quiescent_uW"
+    "POWER": "Power_Quiescent_uW",
 }
 
 
@@ -60,6 +60,14 @@ SINGLE_OPAMP_METRIC2RESULT_NAME = {
 }
 
 
+class SimulationRunError(RuntimeError):
+    """ngspice 对某个 design point 仿真失败。"""
+
+
+class SimulationResultError(RuntimeError):
+    """ngspice 已执行，但无法得到目标性能指标。"""
+
+
 class Simulator:
 
     def __init__(
@@ -68,7 +76,7 @@ class Simulator:
         circuit_type: str,
         circuit_name: str,
         simulate_condition_path: Optional[Path] = None,
-        output_path: Optional[Path] = None
+        output_path: Optional[Path] = None,
     ) -> None:
 
         pwd_path = Path(__file__).absolute().resolve().parent
@@ -80,9 +88,9 @@ class Simulator:
             )
 
         type_name_lst = [
-            p.name
-            for p in testbench_path.iterdir()
-            if p.is_dir()
+            path.name
+            for path in testbench_path.iterdir()
+            if path.is_dir()
         ]
 
         if circuit_type not in type_name_lst:
@@ -98,15 +106,13 @@ class Simulator:
 
         self.metrics = self._metric_remapping(
             metrics,
-            circuit_type
+            circuit_type,
         )
 
-        # 当前 circuit type 对应的 testbench 模板目录
         self.circuit_testbench_path = (
             testbench_path / circuit_type
         )
 
-        # 仿真条件目录
         if simulate_condition_path is None:
             self.simulate_condition_path = (
                 self.circuit_testbench_path
@@ -117,7 +123,6 @@ class Simulator:
                 simulate_condition_path
             )
 
-        # 最终结果保存目录
         if output_path is None:
             self.output_path = (
                 pwd_path.parent.parent
@@ -128,10 +133,9 @@ class Simulator:
 
         self.output_path.mkdir(
             parents=True,
-            exist_ok=True
+            exist_ok=True,
         )
 
-        # 临时仿真 workspace
         self.workspace_path = (
             pwd_path / "workspace"
         )
@@ -146,32 +150,27 @@ class Simulator:
     def _metric_remapping(
         self,
         metrics: List[str],
-        circuit_type: str
+        circuit_type: str,
     ) -> List[str]:
 
-        if circuit_type == "single_ended_opamp":
+        if circuit_type != "single_ended_opamp":
+            raise NotImplementedError(
+                f"暂不支持的电路类型: {circuit_type}"
+            )
 
-            for metric in metrics:
+        for metric in metrics:
+            if metric not in SINGLE_OPAMP_METRIC2METRIC:
+                raise ValueError(
+                    f"不支持的性能指标: {metric}"
+                )
 
-                if (
-                    metric
-                    not in SINGLE_OPAMP_METRIC2METRIC
-                ):
-                    raise ValueError(
-                        f"不支持的性能指标: {metric}"
-                    )
-
-            return [
-                SINGLE_OPAMP_METRIC2METRIC[metric]
-                for metric in metrics
-            ]
-
-        raise NotImplementedError(
-            f"暂不支持的电路类型: {circuit_type}"
-        )
+        return [
+            SINGLE_OPAMP_METRIC2METRIC[metric]
+            for metric in metrics
+        ]
 
     def _get_testbench_name_lst(
-        self
+        self,
     ) -> List[str]:
 
         testbench_name_lst = []
@@ -184,10 +183,7 @@ class Simulator:
                 ]
             )
 
-            if (
-                testbench_name
-                not in testbench_name_lst
-            ):
+            if testbench_name not in testbench_name_lst:
                 testbench_name_lst.append(
                     testbench_name
                 )
@@ -196,21 +192,21 @@ class Simulator:
 
     def _generate_workspace(
         self,
-        n_workers: int
+        n_workers: int,
     ) -> None:
 
-        for number in range(n_workers):
+        for worker_id in range(n_workers):
 
             sub_workspace = (
                 self.workspace_path
-                / f"workspace_{number}"
+                / f"workspace_{worker_id}"
             )
 
             sub_workspace.mkdir()
 
     def _copy_circuit(
         self,
-        circuit_path: Path
+        circuit_path: Path,
     ) -> None:
 
         circuit_file = (
@@ -246,36 +242,26 @@ class Simulator:
 
             shutil.copy2(
                 circuit_file,
-                sub_workspace
+                sub_workspace,
             )
 
             shutil.copy2(
                 params_file,
-                sub_workspace
+                sub_workspace,
             )
 
     def _generate_testbench_copy(
-        self
+        self,
     ) -> None:
 
-        # 根据 requested metrics
-        # 确定实际需要运行哪些 testbench
         testbench_name_lst = (
             self._get_testbench_name_lst()
         )
 
         modified_testbench: Dict[str, str] = {}
 
-        # ====================================================
-        # 第一阶段：
-        # 将 JSON 中的 simulation condition
-        # 替换进入 testbench 模板
-        #
-        # 注意：
-        # DUT_PATH 不属于 simulation condition，
-        # 此时故意保留 {{DUT_PATH}}
-        # ====================================================
-
+        # 先替换通用 simulation condition。
+        # DUT_PATH 此时故意保留。
         for testbench_name in testbench_name_lst:
 
             tb_file_path = (
@@ -306,22 +292,20 @@ class Simulator:
                 )
             )
 
-            simulate_condition: Dict[
-                str, Any
-            ] = json.loads(
-                cond_file_path.read_text(
-                    encoding="utf-8"
+            simulate_condition: Dict[str, Any] = (
+                json.loads(
+                    cond_file_path.read_text(
+                        encoding="utf-8"
+                    )
                 )
             )
 
-            # DUT_PATH 不允许再由 JSON 控制
             if "DUT_PATH" in simulate_condition:
                 raise ValueError(
-                    f"{cond_file_path.name} 中不应再定义 "
-                    f"DUT_PATH，请删除该字段。"
+                    f"{cond_file_path.name} "
+                    f"中不应定义 DUT_PATH"
                 )
 
-            # 替换所有 simulation condition
             for key, value in (
                 simulate_condition.items()
             ):
@@ -329,7 +313,7 @@ class Simulator:
                 testbench_content = (
                     testbench_content.replace(
                         f"{{{{{key}}}}}",
-                        str(value)
+                        str(value),
                     )
                 )
 
@@ -337,13 +321,7 @@ class Simulator:
                 testbench_name
             ] = testbench_content
 
-        # ====================================================
-        # 第二阶段：
-        # 针对每个 sub_workspace，
-        # 将 {{DUT_PATH}} 替换成该 workspace
-        # 自己的 circuit 文件路径
-        # ====================================================
-
+        # 再针对不同 workspace 替换 DUT_PATH。
         for sub_workspace in (
             self.workspace_path.iterdir()
         ):
@@ -364,18 +342,16 @@ class Simulator:
 
             for (
                 testbench_name,
-                testbench_content
+                testbench_content,
             ) in modified_testbench.items():
 
                 workspace_testbench_content = (
                     testbench_content.replace(
                         "{{DUT_PATH}}",
-                        dut_path.as_posix()
+                        dut_path.as_posix(),
                     )
                 )
 
-                # 到这一步所有 placeholder
-                # 都应该已经替换完成
                 if (
                     "{{" in workspace_testbench_content
                     or "}}" in workspace_testbench_content
@@ -392,13 +368,13 @@ class Simulator:
 
                 target_testbench_file.write_text(
                     workspace_testbench_content,
-                    encoding="utf-8"
+                    encoding="utf-8",
                 )
 
     def _rewrite_parameters(
         self,
         sub_workspace: Path,
-        design_parameters: np.ndarray
+        design_parameters: np.ndarray,
     ) -> None:
 
         workspace_param_path = (
@@ -422,7 +398,6 @@ class Simulator:
 
         param_line_index_lst = []
 
-        # 找到所有 .param 行
         for index, line in enumerate(lines):
 
             if (
@@ -438,7 +413,6 @@ class Simulator:
             len(param_line_index_lst)
             != len(design_parameters)
         ):
-
             raise ValueError(
                 f"参数文件中共有 "
                 f"{len(param_line_index_lst)} 个参数，"
@@ -446,11 +420,9 @@ class Simulator:
                 f"{len(design_parameters)} 个值"
             )
 
-        # 按 params.sp 中参数出现顺序
-        # 写入 design parameter
         for (
             value_index,
-            line_index
+            line_index,
         ) in enumerate(
             param_line_index_lst
         ):
@@ -473,12 +445,12 @@ class Simulator:
 
         workspace_param_path.write_text(
             "\n".join(lines) + "\n",
-            encoding="utf-8"
+            encoding="utf-8",
         )
 
     def _run_testbench(
         self,
-        sub_workspace: Path
+        sub_workspace: Path,
     ) -> Dict[str, Path]:
 
         testbench_name_lst = (
@@ -486,7 +458,8 @@ class Simulator:
         )
 
         log_path_dict: Dict[
-            str, Path
+            str,
+            Path,
         ] = {}
 
         for testbench_name in (
@@ -509,8 +482,6 @@ class Simulator:
                 / f"{testbench_name}.log"
             )
 
-            # 防止读取上一组 design parameter
-            # 留下来的旧 log
             if log_path.exists():
                 log_path.unlink()
 
@@ -519,74 +490,60 @@ class Simulator:
                 "-b",
                 "-o",
                 log_path.name,
-                testbench_path.name
+                testbench_path.name,
             ]
 
             try:
-
                 process = subprocess.run(
                     command,
                     cwd=sub_workspace,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    text=True
+                    text=True,
                 )
 
             except FileNotFoundError as exc:
-
                 raise FileNotFoundError(
                     "未找到 ngspice 命令，"
                     "请确认 ngspice 已安装并加入 PATH。"
                 ) from exc
 
             if log_path.exists():
-
                 log_content = (
                     log_path.read_text(
                         encoding="utf-8",
-                        errors="replace"
+                        errors="replace",
                     )
                 )
-
             else:
-
                 log_content = (
                     process.stdout or ""
                 )
 
             if process.returncode != 0:
-
-                raise RuntimeError(
+                raise SimulationRunError(
                     f"ngspice 仿真失败。\n"
-                    f"Testbench: "
-                    f"{testbench_path.name}\n"
-                    f"Workspace: "
-                    f"{sub_workspace}\n"
+                    f"Testbench: {testbench_path.name}\n"
+                    f"Workspace: {sub_workspace}\n"
                     f"Return code: "
                     f"{process.returncode}\n"
-                    f"Log:\n"
-                    f"{log_content}"
+                    f"Log:\n{log_content}"
                 )
 
-            # 某些 ngspice 错误未必可靠地
-            # 通过 returncode 反映，因此检查 log
             if re.search(
-                r"(?im)^\s*(fatal error|error:)",
-                log_content
+                r"(?im)^\s*"
+                r"(fatal error|error:)",
+                log_content,
             ):
-
-                raise RuntimeError(
+                raise SimulationRunError(
                     f"ngspice log 中检测到错误。\n"
-                    f"Testbench: "
-                    f"{testbench_path.name}\n"
-                    f"Workspace: "
-                    f"{sub_workspace}\n"
-                    f"Log:\n"
-                    f"{log_content}"
+                    f"Testbench: {testbench_path.name}\n"
+                    f"Workspace: {sub_workspace}\n"
+                    f"Log:\n{log_content}"
                 )
 
             if not log_path.exists():
-                raise FileNotFoundError(
+                raise SimulationRunError(
                     f"ngspice 未生成 log 文件: "
                     f"{log_path}"
                 )
@@ -599,15 +556,14 @@ class Simulator:
 
     def _read_simulation_result(
         self,
-        log_path_dict: Dict[str, Path]
+        log_path_dict: Dict[str, Path],
     ) -> np.ndarray:
 
         result_lst = []
 
-        # 防止同一个 log 重复读取
-        # 比如 P_PSRR / N_PSRR
         log_content_dict: Dict[
-            str, str
+            str,
+            str,
         ] = {}
 
         number_pattern = (
@@ -634,11 +590,8 @@ class Simulator:
                 ]
             )
 
-            if (
-                testbench_name
-                not in log_path_dict
-            ):
-                raise KeyError(
+            if testbench_name not in log_path_dict:
+                raise SimulationResultError(
                     f"未找到 {testbench_name} "
                     f"对应的 log 文件"
                 )
@@ -658,7 +611,7 @@ class Simulator:
                     testbench_name
                 ] = log_path.read_text(
                     encoding="utf-8",
-                    errors="replace"
+                    errors="replace",
                 )
 
             log_content = (
@@ -667,11 +620,6 @@ class Simulator:
                 ]
             )
 
-            # 例如：
-            #
-            # dc_gain_db = 6.123e+01
-            # gbw_hz = 1.345e+07
-            #
             pattern = (
                 rf"(?im)^\s*"
                 rf"{re.escape(result_name)}"
@@ -681,21 +629,16 @@ class Simulator:
 
             matches = re.findall(
                 pattern,
-                log_content
+                log_content,
             )
 
             if not matches:
-                raise ValueError(
+                raise SimulationResultError(
                     f"无法从 {testbench_name}.log "
                     f"中读取指标 {raw_metric}。\n"
-                    f"期望变量名称: "
-                    f"{result_name}\n"
-                    f"Log:\n"
-                    f"{log_content}"
+                    f"期望变量名称: {result_name}"
                 )
 
-            # 某些变量可能因为 meas + print
-            # 出现多次，直接取最后一次
             result_value = float(
                 matches[-1]
             )
@@ -706,39 +649,80 @@ class Simulator:
 
         return np.asarray(
             result_lst,
-            dtype=float
+            dtype=float,
         )
 
     def _simulate_chunk(
         self,
         sub_workspace: Path,
-        chunk: np.ndarray
-    ) -> np.ndarray:
+        chunk: np.ndarray,
+        sample_index_chunk: np.ndarray,
+        continue_on_error: bool,
+    ) -> Tuple[
+        np.ndarray,
+        List[Dict[str, Any]],
+    ]:
 
         result_lst = []
+        failure_records = []
 
-        for design_parameters in chunk:
+        for (
+            sample_index,
+            design_parameters,
+        ) in zip(
+            sample_index_chunk,
+            chunk,
+        ):
 
-            # 1. 更新当前 sample 参数
+            # 参数文件本身有问题属于配置错误，
+            # 不应该当成“非法设计点”吞掉。
             self._rewrite_parameters(
                 sub_workspace,
-                design_parameters
+                design_parameters,
             )
 
-            # 2. 执行当前 metrics 所需要的
-            #    所有 testbench
-            log_path_dict = (
-                self._run_testbench(
-                    sub_workspace
+            try:
+                log_path_dict = (
+                    self._run_testbench(
+                        sub_workspace
+                    )
                 )
-            )
 
-            # 3. 读取性能指标
-            simulation_result = (
-                self._read_simulation_result(
-                    log_path_dict
+                simulation_result = (
+                    self._read_simulation_result(
+                        log_path_dict
+                    )
                 )
-            )
+
+            except (
+                SimulationRunError,
+                SimulationResultError,
+            ) as exc:
+
+                if not continue_on_error:
+                    raise
+
+                simulation_result = (
+                    np.full(
+                        len(self.raw_metrics),
+                        np.nan,
+                        dtype=float,
+                    )
+                )
+
+                failure_records.append(
+                    {
+                        "sample_index": int(
+                            sample_index
+                        ),
+                        "design_parameters":
+                            design_parameters.tolist(),
+                        "error_type":
+                            type(exc).__name__,
+                        "error":
+                            str(exc),
+                    }
+                )
 
             result_lst.append(
                 simulation_result
@@ -746,25 +730,30 @@ class Simulator:
 
         if not result_lst:
 
-            return np.empty(
-                (
-                    0,
-                    len(self.raw_metrics)
+            return (
+                np.empty(
+                    (
+                        0,
+                        len(self.raw_metrics),
+                    ),
+                    dtype=float,
                 ),
-                dtype=float
+                failure_records,
             )
 
-        return np.vstack(
-            result_lst
+        return (
+            np.vstack(result_lst),
+            failure_records,
         )
 
-    def write_simulate_result(
+    def _write_failure_records(
         self,
-        design_parameters: np.ndarray,
-        metrics: np.ndarray,
-        design_parameter_name_lst:
-            Optional[List[str]] = None
+        failure_records:
+            List[Dict[str, Any]],
     ) -> None:
+
+        if not failure_records:
+            return
 
         circuit_result_path = (
             self.output_path
@@ -773,7 +762,110 @@ class Simulator:
 
         circuit_result_path.mkdir(
             parents=True,
-            exist_ok=True
+            exist_ok=True,
+        )
+
+        failure_path = (
+            circuit_result_path
+            / "simulation_failures.jsonl"
+        )
+
+        with open(
+            failure_path,
+            mode="w",
+            encoding="utf-8",
+        ) as file:
+
+            for record in failure_records:
+
+                file.write(
+                    json.dumps(
+                        record,
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+    def write_simulate_result(
+        self,
+        design_parameters: np.ndarray,
+        metrics: np.ndarray,
+        design_parameter_name_lst:
+            Optional[List[str]] = None,
+    ) -> None:
+
+        design_parameters_array = (
+            np.asarray(
+                design_parameters,
+                dtype=float,
+            )
+        )
+
+        metrics_array = (
+            np.asarray(
+                metrics,
+                dtype=float,
+            )
+        )
+
+        if design_parameters_array.ndim == 1:
+            design_parameters_array = (
+                design_parameters_array.reshape(
+                    1,
+                    -1,
+                )
+            )
+
+        if metrics_array.ndim == 1:
+            metrics_array = (
+                metrics_array.reshape(
+                    1,
+                    -1,
+                )
+            )
+
+        if design_parameters_array.ndim != 2:
+            raise ValueError(
+                "design_parameters 必须为 "
+                "一维或二维数组"
+            )
+
+        if metrics_array.ndim != 2:
+            raise ValueError(
+                "metrics 必须为一维或二维数组"
+            )
+
+        if (
+            design_parameters_array.shape[0]
+            != metrics_array.shape[0]
+        ):
+            raise ValueError(
+                "design_parameters 与 metrics "
+                "的样本数量必须一致："
+                f"{design_parameters_array.shape[0]}"
+                " != "
+                f"{metrics_array.shape[0]}"
+            )
+
+        if (
+            metrics_array.shape[1]
+            != len(self.metrics)
+        ):
+            raise ValueError(
+                f"metrics 应有 "
+                f"{len(self.metrics)} 列，"
+                f"实际为 "
+                f"{metrics_array.shape[1]} 列"
+            )
+
+        circuit_result_path = (
+            self.output_path
+            / self.circuit_name
+        )
+
+        circuit_result_path.mkdir(
+            parents=True,
+            exist_ok=True,
         )
 
         design_csv_path = (
@@ -786,70 +878,145 @@ class Simulator:
             / "metrics.csv"
         )
 
-        # 保存设计参数
         is_first_design = (
             not design_csv_path.exists()
         )
+
+        if is_first_design:
+
+            if design_parameter_name_lst is None:
+                raise ValueError(
+                    "第一次保存仿真结果必须指定 "
+                    "design_parameter_name_lst。"
+                )
+
+            if (
+                len(design_parameter_name_lst)
+                != design_parameters_array.shape[1]
+            ):
+                raise ValueError(
+                    "design_parameter_name_lst "
+                    "长度与设计参数列数不一致"
+                )
+
+        else:
+
+            with open(
+                design_csv_path,
+                mode="r",
+                encoding="utf-8",
+            ) as file:
+
+                reader = csv.reader(file)
+                existing_header = next(reader)
+
+            if (
+                len(existing_header)
+                != design_parameters_array.shape[1]
+            ):
+                raise ValueError(
+                    "现有 design_parameters.csv "
+                    "与本次设计参数维度不一致"
+                )
+
+            if (
+                design_parameter_name_lst
+                is not None
+                and existing_header
+                != list(
+                    design_parameter_name_lst
+                )
+            ):
+                raise ValueError(
+                    "本次参数名称与已有 "
+                    "design_parameters.csv "
+                    "表头不一致"
+                )
 
         with open(
             design_csv_path,
             mode="a",
             newline="",
-            encoding="utf-8"
-        ) as f:
+            encoding="utf-8",
+        ) as file:
 
-            writer = csv.writer(f)
+            writer = csv.writer(file)
 
             if is_first_design:
-
-                if design_parameter_name_lst is None:
-                    raise ValueError(
-                        "第一次保存仿真结果必须指定 "
-                        "design_parameter_name_lst。"
-                    )
-
                 writer.writerow(
                     design_parameter_name_lst
                 )
 
-            writer.writerow(
-                design_parameters.tolist()
+            writer.writerows(
+                design_parameters_array.tolist()
             )
 
-        # 保存 metrics
         is_first_metric = (
             not metrics_csv_path.exists()
         )
+
+        if not is_first_metric:
+
+            with open(
+                metrics_csv_path,
+                mode="r",
+                encoding="utf-8",
+            ) as file:
+
+                reader = csv.reader(file)
+                existing_header = next(reader)
+
+            if existing_header != self.metrics:
+                raise ValueError(
+                    "现有 metrics.csv 的指标列"
+                    "与当前 Simulator 不一致"
+                )
 
         with open(
             metrics_csv_path,
             mode="a",
             newline="",
-            encoding="utf-8"
-        ) as f:
+            encoding="utf-8",
+        ) as file:
 
-            writer = csv.writer(f)
+            writer = csv.writer(file)
 
             if is_first_metric:
                 writer.writerow(
                     self.metrics
                 )
 
-            writer.writerow(
-                metrics.tolist()
+            writer.writerows(
+                metrics_array.tolist()
             )
 
     def simulate(
         self,
         circuit_path: Path,
         n_workers: int,
-        design_parameters_array: np.ndarray
+        design_parameters_array: np.ndarray,
+        continue_on_error: bool = False,
     ) -> np.ndarray:
+
+        if (
+            isinstance(n_workers, bool)
+            or not isinstance(n_workers, int)
+        ):
+            raise TypeError(
+                "n_workers 必须为整数"
+            )
 
         if n_workers <= 0:
             raise ValueError(
                 "n_workers 必须大于 0"
             )
+
+        design_parameters_array = (
+            np.asarray(
+                design_parameters_array,
+                dtype=float,
+            )
+        )
 
         if design_parameters_array.ndim != 2:
             raise ValueError(
@@ -870,11 +1037,10 @@ class Simulator:
 
         effective_workers = min(
             n_workers,
-            n_samples
+            n_samples,
         )
 
-        # 每次 simulate 都重新生成
-        # 一个全新的 workspace
+        # 每次 simulate 都建立干净 workspace。
         if self.workspace_path.exists():
             shutil.rmtree(
                 self.workspace_path
@@ -882,33 +1048,28 @@ class Simulator:
 
         self.workspace_path.mkdir()
 
-        # ====================================================
-        # 准备 simulation workspace
-        # ====================================================
-
         self._generate_workspace(
             effective_workers
         )
 
-        # 先复制 DUT，因为后面生成 testbench
-        # 时需要获得每个 workspace
-        # 对应的 DUT_PATH
+        # 先复制 circuit，之后才能生成 DUT_PATH。
         self._copy_circuit(
             circuit_path
         )
 
-        # 再生成 testbench
-        # 此时会自动替换 {{DUT_PATH}}
         self._generate_testbench_copy()
-
-        # ====================================================
-        # 将 design points 分配给各 worker
-        # ====================================================
 
         design_parameters_chunks = (
             np.array_split(
                 design_parameters_array,
-                effective_workers
+                effective_workers,
+            )
+        )
+
+        sample_index_chunks = (
+            np.array_split(
+                np.arange(n_samples),
+                effective_workers,
             )
         )
 
@@ -920,9 +1081,15 @@ class Simulator:
 
             for (
                 worker_id,
-                chunk
+                (
+                    chunk,
+                    sample_index_chunk,
+                ),
             ) in enumerate(
-                design_parameters_chunks
+                zip(
+                    design_parameters_chunks,
+                    sample_index_chunks,
+                )
             ):
 
                 sub_workspace = (
@@ -933,22 +1100,44 @@ class Simulator:
                 future = executor.submit(
                     self._simulate_chunk,
                     sub_workspace,
-                    chunk
+                    chunk,
+                    sample_index_chunk,
+                    continue_on_error,
                 )
 
                 futures.append(
                     future
                 )
 
-            # 按提交顺序读取结果，
-            # 保持 sample 顺序
-            result_chunks = [
+            worker_results = [
                 future.result()
                 for future in futures
             ]
 
+        result_chunks = [
+            result_chunk
+            for (
+                result_chunk,
+                _,
+            ) in worker_results
+        ]
+
+        failure_records = [
+            failure_record
+            for (
+                _,
+                worker_failure_records,
+            ) in worker_results
+            for failure_record
+            in worker_failure_records
+        ]
+
         result_array = np.vstack(
             result_chunks
+        )
+
+        self._write_failure_records(
+            failure_records
         )
 
         return result_array

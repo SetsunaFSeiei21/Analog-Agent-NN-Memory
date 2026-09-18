@@ -1,12 +1,14 @@
 import math
 import numpy as np
 
-from ..base import Sampler_Optimizer
+from ..base import Sampler_Optimizer as _Sampler_Optimizer
 from typing import Sequence, Tuple
 from pathlib import Path
 from scipy.stats import qmc
 
-class Sobol_Sampler(Sampler_Optimizer):
+__all__ = ["Sobol_Sampler"]
+
+class Sobol_Sampler(_Sampler_Optimizer):
     
     def __init__(
         self,
