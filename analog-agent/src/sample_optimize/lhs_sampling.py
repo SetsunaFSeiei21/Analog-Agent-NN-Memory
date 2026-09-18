@@ -1,111 +1,124 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import (
+    Optional,
+    Sequence,
+    Tuple,
+)
+
 import numpy as np
 
-from ..base import Sampler_Optimizer as _Sampler_Optimizer
-from pathlib import Path
-from typing import Sequence, Tuple
+from ..base import (
+    Sampler_Optimizer as _Sampler_Optimizer,
+)
 
-__all__ = ['LHS_Sampler']
+
+__all__ = ["LHS_Sampler"]
+
 
 class LHS_Sampler(_Sampler_Optimizer):
-    
+
     def __init__(
         self,
         circuit_param_path: Path,
         parameter_name_lst: Sequence[str],
-        bounds: Sequence[Tuple[float, float, float]],
+        bounds: Sequence[
+            Tuple[float, float, float]
+        ],
         seed: int = 42,
     ) -> None:
-        
-        super().__init__(circuit_param_path, parameter_name_lst, bounds, seed)
-    
+
+        super().__init__(
+            circuit_param_path,
+            parameter_name_lst,
+            bounds,
+            seed,
+        )
+
     def generate_sample_point(
         self,
         n_points: int,
-        n_workers: int,
+        n_workers: Optional[int] = None,
     ) -> np.ndarray:
+        """
+        LHS 必须一次性生成完整设计。
+
+        n_workers 仅用于保持采样器接口一致，
+        实际仿真并行由 Simulator 负责。
+        """
+
+        del n_workers
+
+        if (
+            isinstance(n_points, bool)
+            or not isinstance(n_points, int)
+        ):
+            raise TypeError(
+                "n_points must be an integer."
+            )
 
         if n_points <= 0:
-            raise ValueError("n_points must be greater than 0.")
+            raise ValueError(
+                "n_points must be greater than 0."
+            )
 
-        generator: np.random.Generator = np.random.default_rng(self.seed)
-
-        # 参数维度数
-        size = len(self.bounds)
-
-        design_result = []
-
-        # 每个维度分别生成 0 ~ n_points-1 的随机排列
-        for _ in range(size):
-            dim_result = generator.permutation(n_points)
-            design_result.append(dim_result)
-
-        # shape: (n_points, size)
-        design_result_array = np.vstack(design_result).T
-
-        # 将 [0, 1) 划分为 n_points 个区间
-        sample_step = 1.0 / n_points
-
-        lower_bound_array = (
-            sample_step * design_result_array
+        generator = np.random.default_rng(
+            self.seed
         )
 
-        upper_bound_array = (
-            sample_step * (design_result_array + 1)
+        dimension = len(
+            self.bounds
         )
 
-        # 每个对应区间内随机取值
-        uniform_result_array = generator.uniform(
-            low=lower_bound_array,
-            high=upper_bound_array,
+        # 每个维度分别生成 0 到 n_points-1 的排列
+        stratum_indices = np.column_stack(
+            [
+                generator.permutation(
+                    n_points
+                )
+
+                for _ in range(
+                    dimension
+                )
+            ]
         )
 
-        # 真实参数范围
-        real_bound_array = np.asarray(
+        # 在每个分层区间中随机取点
+        unit_samples = (
+            stratum_indices
+            + generator.random(
+                size=(
+                    n_points,
+                    dimension,
+                )
+            )
+        ) / n_points
+
+        bound_array = np.asarray(
             self.bounds,
             dtype=float,
         )
 
-        real_lower_bound_array = (
-            real_bound_array[:, 0].reshape(1, -1)
+        lower_array = (
+            bound_array[:, 0]
+            .reshape(1, -1)
         )
 
-        real_upper_bound_array = (
-            real_bound_array[:, 1].reshape(1, -1)
+        upper_array = (
+            bound_array[:, 1]
+            .reshape(1, -1)
         )
 
-        # [0, 1) -> 真实参数空间
-        real_result_array = (
-            uniform_result_array
+        continuous_samples = (
+            lower_array
+            + unit_samples
             * (
-                real_upper_bound_array
-                - real_lower_bound_array
+                upper_array
+                - lower_array
             )
-            + real_lower_bound_array
         )
 
-        # 回代 step，寻找最近的合法离散值
-        step_array = (
-            real_bound_array[:, 2].reshape(1, -1)
+        return self._project_to_legal_grid(
+            continuous_samples
         )
-
-        real_step_num = np.rint(
-            (
-                real_result_array
-                - real_lower_bound_array
-            )
-            / step_array
-        ).astype(np.int64)
-
-        sample_result = (
-            real_lower_bound_array
-            + real_step_num * step_array
-        )
-
-        # 防止越界
-        sample_result = np.clip(
-            sample_result,
-            real_lower_bound_array,
-            real_upper_bound_array,
-        )
-
-        return sample_result

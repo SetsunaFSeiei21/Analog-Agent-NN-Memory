@@ -1,0 +1,17 @@
+{
+    "control_parameter_ranges": {
+        "W": [1.0, 100.0, 0.5],
+        "L": [0.15, 10.0, 0.05],
+        "R": [100.0, 100000.0, 100.0],
+        "C": [1e-15, 1e-9, 1e-15]
+    },
+    "device_control_ranges": {
+        "NMOS.W": [1.0, 100.0, 0.5],
+        "NMOS.L": [0.15, 10.0, 0.05],
+        "PMOS.W": [1.0, 200.0, 0.5],
+        "PMOS.L": [0.15, 10.0, 0.05],
+        "RESISTOR.R": [100.0, 100000.0, 100.0],
+        "CAPACITOR.C": [1e-15, 1e-9, 1e-15]
+    },
+    "circuit_parameter_overrides": {}
+}

@@ -1,12 +1,23 @@
-import numpy as np
+from __future__ import annotations
 
 from multiprocessing import Pool
 from pathlib import Path
-from typing import List, Sequence, Tuple
+from typing import (
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
-from ..base import Sampler_Optimizer as _Sampler_Optimizer
+import numpy as np
+
+from ..base import (
+    Sampler_Optimizer as _Sampler_Optimizer,
+)
+
 
 __all__ = ["Random_Sampler"]
+
 
 class Random_Sampler(_Sampler_Optimizer):
 
@@ -14,7 +25,9 @@ class Random_Sampler(_Sampler_Optimizer):
         self,
         circuit_param_path: Path,
         parameter_name_lst: Sequence[str],
-        bounds: Sequence[Tuple[float, float, float]],
+        bounds: Sequence[
+            Tuple[float, float, float]
+        ],
         seed: int = 42,
     ) -> None:
 
@@ -25,40 +38,59 @@ class Random_Sampler(_Sampler_Optimizer):
             seed,
         )
 
-        self.seed_sequence = np.random.SeedSequence(seed)
+        self.seed_sequence = (
+            np.random.SeedSequence(seed)
+        )
 
     def generate_chunk(
         self,
-        args: Tuple[np.random.SeedSequence, int],
+        args: Tuple[
+            np.random.SeedSequence,
+            int,
+        ],
     ) -> np.ndarray:
 
         seed_sequence, chunk_size = args
 
         rng = np.random.Generator(
-            np.random.PCG64(seed_sequence)
+            np.random.PCG64(
+                seed_sequence
+            )
         )
 
         columns: List[np.ndarray] = []
 
-        for lower_bound, upper_bound, step in self.bounds:
-            grid = np.arange(
-                lower_bound,
-                upper_bound + step * 0.1,
-                step,
-            )
+        for (
+            lower_bound,
+            upper_bound,
+            step,
+        ) in self.bounds:
+
+            step_ratio = (
+                upper_bound - lower_bound
+            ) / step
 
             tolerance = (
                 max(
                     1.0,
-                    abs(lower_bound),
-                    abs(upper_bound),
+                    abs(step_ratio),
                 )
                 * 1e-12
             )
 
-            grid = grid[
-                grid <= upper_bound + tolerance
-            ]
+            max_step_index = int(
+                np.floor(
+                    step_ratio + tolerance
+                )
+            )
+
+            grid = (
+                lower_bound
+                + np.arange(
+                    max_step_index + 1
+                )
+                * step
+            )
 
             column = rng.choice(
                 grid,
@@ -68,29 +100,38 @@ class Random_Sampler(_Sampler_Optimizer):
 
             columns.append(column)
 
-        return np.column_stack(columns)
+        return np.column_stack(
+            columns
+        )
 
     def generate_sample_point(
         self,
         n_points: int,
-        n_workers: int,
+        n_workers: Optional[int] = None,
     ) -> np.ndarray:
 
         if (
             isinstance(n_points, bool)
             or not isinstance(n_points, int)
         ):
-            raise TypeError("n_points must be an integer.")
+            raise TypeError(
+                "n_points must be an integer."
+            )
+
+        if n_points <= 0:
+            raise ValueError(
+                "n_points must be greater than 0."
+            )
+
+        if n_workers is None:
+            n_workers = 1
 
         if (
             isinstance(n_workers, bool)
             or not isinstance(n_workers, int)
         ):
-            raise TypeError("n_workers must be an integer.")
-
-        if n_points <= 0:
-            raise ValueError(
-                "n_points must be greater than 0."
+            raise TypeError(
+                "n_workers must be an integer."
             )
 
         if n_workers <= 0:
@@ -103,48 +144,60 @@ class Random_Sampler(_Sampler_Optimizer):
             n_workers,
         )
 
-        base_chunk_size, remainder = divmod(
+        (
+            base_chunk_size,
+            remainder,
+        ) = divmod(
             n_points,
             worker_count,
         )
 
         chunk_sizes = [
-            base_chunk_size
-            + int(worker_index < remainder)
-            for worker_index in range(worker_count)
+            (
+                base_chunk_size
+                + int(
+                    worker_index
+                    < remainder
+                )
+            )
+
+            for worker_index
+            in range(worker_count)
         ]
 
         child_seed_sequences = (
-            self.seed_sequence.spawn(worker_count)
+            self.seed_sequence.spawn(
+                worker_count
+            )
         )
 
-        tasks = [
-            (
-                seed_sequence,
-                chunk_size,
-            )
-            for seed_sequence, chunk_size in zip(
+        tasks = list(
+            zip(
                 child_seed_sequences,
                 chunk_sizes,
             )
-        ]
+        )
 
         if worker_count == 1:
+
             chunks = [
-                self.generate_chunk(tasks[0])
+                self.generate_chunk(
+                    tasks[0]
+                )
             ]
+
         else:
+
             with Pool(
-                processes=worker_count,
+                processes=worker_count
             ) as pool:
+
                 chunks = pool.map(
                     self.generate_chunk,
                     tasks,
                 )
 
-        result = np.concatenate(
+        return np.concatenate(
             chunks,
             axis=0,
         )
-
-        return result
