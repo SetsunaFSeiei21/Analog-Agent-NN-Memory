@@ -14,6 +14,14 @@ from .spice_parser import (
     expression_contains_parameter,
     parse_spice_instances,
     read_parameter_names,
+    rewrite_parameter_values,
+)
+
+from .logging_utils import (
+    add_rotating_file_handler,
+    close_logger,
+    create_logger,
+    get_child_logger,
 )
 
 
@@ -26,8 +34,13 @@ __all__ = [
     "ParameterUsage",
     "SpiceInstance",
     "analyze_parameter_usage",
+    "add_rotating_file_handler",
+    "close_logger",
+    "create_logger",
     "expression_contains_parameter",
     "parse_spice_instances",
     "read_parameter_names",
     "resolve_parameter_bounds",
+    "rewrite_parameter_values",
+    "get_child_logger",
 ]

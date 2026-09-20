@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 import re
+
+import numpy as np
 
 from dataclasses import dataclass
 from pathlib import Path
 from typing import (
     List,
+    Mapping,
     Optional,
     Sequence,
     Tuple,
@@ -217,6 +221,7 @@ def _read_logical_lines(
 
 def read_parameter_names(
     parameter_path: Path,
+    logger: Optional[logging.Logger] = None,
 ) -> List[str]:
     """
     按照 params.sp 中的出现顺序读取参数名称。
@@ -234,9 +239,8 @@ def read_parameter_names(
 
     seen_names: set[str] = set()
 
-    logical_lines = _read_logical_lines(
-        parameter_path
-    )
+    active_logger = logger or logging.getLogger(__name__)
+    logical_lines = _read_logical_lines(parameter_path)
 
     for logical_line in logical_lines:
 
@@ -306,6 +310,7 @@ def read_parameter_names(
             f"in {parameter_path}"
         )
 
+    active_logger.debug("读取参数名称完成：path=%s, count=%d", parameter_path, len(parameter_names))
     return parameter_names
 
 
@@ -344,6 +349,7 @@ def parse_spice_instances(
         str,
         Sequence[Union[Path, str]],
     ],
+    logger: Optional[logging.Logger] = None,
 ) -> List[SpiceInstance]:
     """
     解析电路网表中的 MOS、电阻和电容实例。
@@ -358,6 +364,7 @@ def parse_spice_instances(
     本函数只负责语法解析，不判断具体器件类型。
     """
 
+    active_logger = logger or logging.getLogger(__name__)
     instances: List[SpiceInstance] = []
 
     normalized_paths = _normalize_paths(
@@ -370,9 +377,22 @@ def parse_spice_instances(
             circuit_path
         )
 
+        in_control_block = False
+
         for logical_line in logical_lines:
 
             statement = logical_line.text
+
+            if statement.lower().startswith(".control"):
+                in_control_block = True
+                continue
+
+            if statement.lower().startswith(".endc"):
+                in_control_block = False
+                continue
+
+            if in_control_block:
+                continue
 
             # 跳过 .param、.subckt、.include 等
             if statement.startswith("."):
@@ -483,4 +503,77 @@ def parse_spice_instances(
                 )
             )
 
+    active_logger.debug("SPICE 实例解析完成：paths=%s, count=%d", normalized_paths, len(instances))
     return instances
+
+
+def rewrite_parameter_values(
+    parameter_path: Path,
+    parameter_values: Mapping[str, float],
+    logger: Optional[logging.Logger] = None,
+) -> None:
+    """在保留注释、续行和同一行其他参数的前提下更新 `.param` 数值。"""
+
+    active_logger = logger or logging.getLogger(__name__)
+    parameter_path = Path(parameter_path)
+    declared_names = read_parameter_names(parameter_path, logger=active_logger)
+    declared_by_key = {name.casefold(): name for name in declared_names}
+    supplied_by_key = {name.casefold(): value for name, value in parameter_values.items()}
+
+    if set(declared_by_key) != set(supplied_by_key):
+        missing = sorted(declared_by_key[key] for key in set(declared_by_key) - set(supplied_by_key))
+        extra = sorted(name for name in parameter_values if name.casefold() not in declared_by_key)
+        raise ValueError(f"参数名称不一致：missing={missing}, extra={extra}")
+
+    formatted_values: dict[str, str] = {}
+    for normalized_name, raw_value in supplied_by_key.items():
+        if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float, np.number)):
+            raise TypeError(f"参数 {declared_by_key[normalized_name]!r} 的值必须是数值")
+        value = float(raw_value)
+        if not np.isfinite(value):
+            raise ValueError(f"参数 {declared_by_key[normalized_name]!r} 的值必须是有限数值")
+        formatted_values[normalized_name] = repr(value)
+
+    lines = parameter_path.read_text(encoding="utf-8").splitlines()
+    rewritten: list[str] = []
+    replaced_names: set[str] = set()
+    index = 0
+
+    while index < len(lines):
+        line = lines[index]
+        if _PARAM_DIRECTIVE_PATTERN.match(line.strip()) is None:
+            rewritten.append(line)
+            index += 1
+            continue
+
+        block_lines = [line]
+        index += 1
+        while index < len(lines) and lines[index].lstrip().startswith("+"):
+            block_lines.append(lines[index])
+            index += 1
+
+        block = "\n".join(block_lines)
+        for normalized_name, declared_name in declared_by_key.items():
+            pattern = re.compile(
+                rf"(?<![A-Za-z0-9_])(?P<prefix>{re.escape(declared_name)}\s*=\s*)"
+                rf"(?P<value>\{{[^{{}}]*\}}|'[^']*'|\"[^\"]*\"|[^\s;$]+)",
+                flags=re.IGNORECASE,
+            )
+            block, count = pattern.subn(
+                lambda match, value=formatted_values[normalized_name]: match.group("prefix") + value,
+                block,
+            )
+            if count > 1:
+                raise ValueError(f"参数 {declared_name!r} 在参数文件中出现多次")
+            if count == 1:
+                replaced_names.add(normalized_name)
+
+        rewritten.extend(block.splitlines())
+
+    missing_replacements = set(declared_by_key) - replaced_names
+    if missing_replacements:
+        missing = sorted(declared_by_key[name] for name in missing_replacements)
+        raise ValueError(f"无法重写以下参数：{missing}")
+
+    parameter_path.write_text("\n".join(rewritten) + "\n", encoding="utf-8")
+    active_logger.debug("参数文件重写完成：path=%s, count=%d", parameter_path, len(replaced_names))

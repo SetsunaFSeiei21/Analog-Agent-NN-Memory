@@ -4,17 +4,13 @@ import json
 import logging
 import math
 import shutil
+import uuid
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
-
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
-from typing import Mapping, Optional, Sequence, List, Tuple
-from random_sampling import Random_Sampler
-from lhs_sampling import LHS_Sampler
-from sobol_sampling import Sobol_Sampler
-from simulating import Simulator
-from dataclasses import dataclass
 
 from ..utils import (
     Bounds,
@@ -22,524 +18,413 @@ from ..utils import (
     SUPPORTED_DEVICE_TYPES,
     DeviceRule,
     ParameterSpec,
+    add_rotating_file_handler,
     analyze_parameter_usage,
+    close_logger,
+    create_logger,
+    get_child_logger,
     read_parameter_names,
     resolve_parameter_bounds,
 )
+from .history_store import SamplingHistoryStore
+from .lhs_sampling import LHS_Sampler
+from .random_sampling import Random_Sampler
+from .simulating import Simulator
+from .sobol_sampling import Sobol_Sampler
 
-__all__ = ["Sampling_Controller"]
+
+__all__ = ["Sampling_Controller", "SamplingResult"]
 
 
-DeviceControlKey = tuple[str, str]
-
-DEFAULT_PARAMETER_RANGE_CONFIG_PATH = (
-    Path(__file__).resolve().parent / "parameter_ranges.json"
-)
+DeviceControlKey = Tuple[str, str]
+DEFAULT_PARAMETER_RANGE_CONFIG_PATH = Path(__file__).resolve().parent / "parameter_ranges.json"
 
 
 def _parse_bounds(raw_bounds: object, rule_name: str) -> Bounds:
-    """
-    将 JSON 中的：
-
-    [lower_bound, upper_bound, step]
-
-    转换成：
-
-    (lower_bound, upper_bound, step)
-    """
-
     if not isinstance(raw_bounds, (list, tuple)) or len(raw_bounds) != 3:
-        raise ValueError(
-            f"范围规则 {rule_name!r} 必须是 "
-            "[lower_bound, upper_bound, step]"
-        )
-
-    if any(
-        isinstance(value, bool) or not isinstance(value, (int, float))
-        for value in raw_bounds
-    ):
+        raise ValueError(f"范围规则 {rule_name!r} 必须是 [lower_bound, upper_bound, step]")
+    if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in raw_bounds):
         raise TypeError(f"范围规则 {rule_name!r} 中的值必须是数值")
 
     lower_bound, upper_bound, step = map(float, raw_bounds)
-
     if not all(math.isfinite(value) for value in (lower_bound, upper_bound, step)):
         raise ValueError(f"范围规则 {rule_name!r} 必须使用有限数值")
-
     if lower_bound >= upper_bound:
-        raise ValueError(
-            f"范围规则 {rule_name!r} 的 lower_bound 必须小于 upper_bound"
-        )
-
+        raise ValueError(f"范围规则 {rule_name!r} 的 lower_bound 必须小于 upper_bound")
     if step <= 0:
         raise ValueError(f"范围规则 {rule_name!r} 的 step 必须大于 0")
-
     return lower_bound, upper_bound, step
 
 
-def _get_config_section(
-    raw_config: dict,
-    section_name: str,
-) -> dict:
+def _get_config_section(raw_config: dict, section_name: str) -> dict:
     section = raw_config.get(section_name, {})
-
     if not isinstance(section, dict):
         raise TypeError(f"{section_name} 必须是 JSON object")
-
     return section
 
 
 def _load_parameter_range_config(
     config_path: Path,
     circuit_name: str,
-) -> tuple[
-    dict[str, Bounds],
-    dict[DeviceControlKey, Bounds],
-    dict[str, Bounds],
-]:
-    """
-    从 parameter_ranges.json 中读取：
-
-    1. 通用控制参数范围；
-    2. 器件类型与控制参数范围；
-    3. 当前电路的单独参数范围。
-    """
-
+    logger: Optional[logging.Logger] = None,
+) -> tuple[dict[str, Bounds], dict[DeviceControlKey, Bounds], dict[str, Bounds]]:
+    active_logger = logger or logging.getLogger(__name__)
     if not config_path.is_file():
         raise FileNotFoundError(f"参数范围配置文件不存在：{config_path}")
 
     try:
         raw_config = json.loads(config_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ValueError(
-            f"参数范围配置文件不是合法 JSON：{config_path}"
-        ) from exc
-
+        raise ValueError(f"参数范围配置文件不是合法 JSON：{config_path}") from exc
     if not isinstance(raw_config, dict):
         raise TypeError("参数范围配置文件的顶层必须是 JSON object")
 
-    raw_control_ranges = _get_config_section(
-        raw_config,
-        "control_parameter_ranges",
-    )
+    raw_control_ranges = _get_config_section(raw_config, "control_parameter_ranges")
+    raw_device_ranges = _get_config_section(raw_config, "device_control_ranges")
+    raw_circuit_overrides = _get_config_section(raw_config, "circuit_parameter_overrides")
 
-    raw_device_ranges = _get_config_section(
-        raw_config,
-        "device_control_ranges",
-    )
-
-    raw_circuit_overrides = _get_config_section(
-        raw_config,
-        "circuit_parameter_overrides",
-    )
-
-    # ========================================================
-    # 通用控制参数范围
-    #
-    # "W": [lower, upper, step]
-    # "L": [lower, upper, step]
-    # "R": [lower, upper, step]
-    # "C": [lower, upper, step]
-    # ========================================================
-
-    control_parameter_ranges: dict[str, Bounds] = {}
-
+    control_ranges: dict[str, Bounds] = {}
     for control_parameter, raw_bounds in raw_control_ranges.items():
         if not isinstance(control_parameter, str):
             raise TypeError("控制参数名称必须是字符串")
-
         normalized_control = control_parameter.upper()
-
-        if normalized_control in control_parameter_ranges:
+        if normalized_control in control_ranges:
             raise ValueError(f"控制参数范围重复：{normalized_control}")
-
-        control_parameter_ranges[normalized_control] = _parse_bounds(
-            raw_bounds,
-            normalized_control,
-        )
-
-    if not control_parameter_ranges:
+        control_ranges[normalized_control] = _parse_bounds(raw_bounds, normalized_control)
+    if not control_ranges:
         raise ValueError("control_parameter_ranges 不能为空")
 
-    # ========================================================
-    # 器件类型 + 控制参数范围
-    #
-    # JSON:
-    # "NMOS.W": [lower, upper, step]
-    #
-    # Python:
-    # ("NMOS", "W"): (lower, upper, step)
-    # ========================================================
-
-    device_control_ranges: dict[DeviceControlKey, Bounds] = {}
-
+    device_ranges: dict[DeviceControlKey, Bounds] = {}
     for raw_key, raw_bounds in raw_device_ranges.items():
         if not isinstance(raw_key, str):
             raise TypeError("device_control_ranges 的键必须是字符串")
-
         if raw_key.count(".") != 1:
-            raise ValueError(
-                f"器件范围键 {raw_key!r} 必须使用 "
-                "DEVICE_TYPE.CONTROL_PARAMETER 格式"
-            )
+            raise ValueError(f"器件范围键 {raw_key!r} 必须使用 DEVICE_TYPE.CONTROL_PARAMETER 格式")
 
         device_type, control_parameter = raw_key.split(".", maxsplit=1)
-
-        normalized_device_type = device_type.upper()
-        normalized_control = control_parameter.upper()
-
-        if normalized_device_type not in SUPPORTED_DEVICE_TYPES:
+        normalized_key = (device_type.upper(), control_parameter.upper())
+        if normalized_key[0] not in SUPPORTED_DEVICE_TYPES:
             raise ValueError(
-                f"不支持的器件类型 {normalized_device_type!r}，"
-                f"当前支持：{sorted(SUPPORTED_DEVICE_TYPES)}"
+                f"不支持的器件类型 {normalized_key[0]!r}，当前支持：{sorted(SUPPORTED_DEVICE_TYPES)}"
             )
-
-        normalized_key = (
-            normalized_device_type,
-            normalized_control,
-        )
-
-        if normalized_key in device_control_ranges:
+        if normalized_key in device_ranges:
             raise ValueError(f"器件范围重复：{raw_key}")
+        device_ranges[normalized_key] = _parse_bounds(raw_bounds, raw_key)
 
-        device_control_ranges[normalized_key] = _parse_bounds(
-            raw_bounds,
-            raw_key,
-        )
+    raw_overrides = raw_circuit_overrides.get(circuit_name, {})
+    if not isinstance(raw_overrides, dict):
+        raise TypeError(f"电路 {circuit_name!r} 的参数覆盖必须是 JSON object")
 
-    # ========================================================
-    # 当前电路的单参数覆盖
-    #
-    # "circuit_parameter_overrides": {
-    #     "five_t_ota": {
-    #         "WTAIL_VAL": [1.0, 50.0, 0.5]
-    #     }
-    # }
-    # ========================================================
-
-    raw_parameter_overrides = raw_circuit_overrides.get(circuit_name, {})
-
-    if not isinstance(raw_parameter_overrides, dict):
-        raise TypeError(
-            f"电路 {circuit_name!r} 的参数覆盖必须是 JSON object"
-        )
-
-    parameter_overrides: dict[str, Bounds] = {}
-
-    for parameter_name, raw_bounds in raw_parameter_overrides.items():
+    overrides: dict[str, Bounds] = {}
+    normalized_override_names: set[str] = set()
+    for parameter_name, raw_bounds in raw_overrides.items():
         if not isinstance(parameter_name, str):
             raise TypeError("参数覆盖名称必须是字符串")
-
-        normalized_parameter_name = parameter_name.casefold()
-
-        if normalized_parameter_name in {
-            name.casefold() for name in parameter_overrides
-        }:
+        normalized_name = parameter_name.casefold()
+        if normalized_name in normalized_override_names:
             raise ValueError(f"参数覆盖重复：{parameter_name}")
+        normalized_override_names.add(normalized_name)
+        overrides[parameter_name] = _parse_bounds(raw_bounds, f"{circuit_name}.{parameter_name}")
 
-        parameter_overrides[parameter_name] = _parse_bounds(
-            raw_bounds,
-            f"{circuit_name}.{parameter_name}",
-        )
-
-    return (
-        control_parameter_ranges,
-        device_control_ranges,
-        parameter_overrides,
+    active_logger.debug(
+        "参数范围配置读取完成：control=%d, device=%d, override=%d",
+        len(control_ranges),
+        len(device_ranges),
+        len(overrides),
     )
-    
-@dataclass
+    return control_ranges, device_ranges, overrides
+
+
+@dataclass(frozen=True)
 class SamplingResult:
-    
-    target_path: Optional[Path] = None
-    random_num: Optional[int] = None
-    lhs_num: Optional[int] = None
-    sobol_num: Optional[int] = None
-    success: bool = False
+    target_path: Path
+    database_path: Path
+    design_csv_path: Path
+    metrics_csv_path: Path
+    run_id: str
+    requested_num: int
+    random_num: int
+    lhs_num: int
+    sobol_num: int
+    failed_num: int
+    duplicate_skipped_num: int
+    success: bool
 
 
 class Sampling_Controller:
-
     def __init__(
         self,
         src_path: Path,
         circuit_name: str,
         circuit_type: str,
         target_path: Path,
-        metrics: List[str],
-        simulation_condition_path: Optional[Path] = None, 
+        metrics: Sequence[str],
+        simulation_condition_path: Optional[Path] = None,
         seed: int = 42,
-        parameter_aliases: Optional[Mapping[str, str]] = None, # 用于解决参数文件和电路文件中的参数名称不一致。
-        device_rules: Sequence[DeviceRule] = DEFAULT_DEVICE_RULES, # 用于根据模型名称判断器件类型
+        parameter_aliases: Optional[Mapping[str, str]] = None,
+        device_rules: Sequence[DeviceRule] = DEFAULT_DEVICE_RULES,
         log_level: int = logging.INFO,
         console_log: bool = True,
+        ngspice_command: str = "ngspice",
+        simulation_timeout_seconds: Optional[float] = 300.0,
+        keep_workspace: bool = False,
+        max_duplicate_rounds: int = 50,
     ) -> None:
+        if not isinstance(circuit_name, str) or not circuit_name.strip():
+            raise ValueError("circuit_name 不能为空")
+        if Path(circuit_name).name != circuit_name or circuit_name in {".", ".."}:
+            raise ValueError("circuit_name 不能包含路径分隔符")
+        if isinstance(max_duplicate_rounds, bool) or not isinstance(max_duplicate_rounds, int):
+            raise TypeError("max_duplicate_rounds 必须是整数")
+        if max_duplicate_rounds <= 0:
+            raise ValueError("max_duplicate_rounds 必须大于 0")
+
         self.src_path = Path(src_path)
         self.circuit_name = circuit_name
         self.circuit_type = circuit_type
-        self.target_path = Path(target_path)
+        self.target_path = Path(target_path).resolve()
         self.metrics = list(metrics)
+        self.seed = seed
+        self.parameter_aliases = dict(parameter_aliases or {})
+        self.device_rules = tuple(device_rules)
+        self.parameter_range_config_path = DEFAULT_PARAMETER_RANGE_CONFIG_PATH
+        self.max_duplicate_rounds = max_duplicate_rounds
         self.log_level = log_level
         self.console_log = console_log
         self.log_path: Optional[Path] = None
-        self.logger = self._create_logger()
 
-        self.parameter_path = self.src_path / f"{self.circuit_name}_params.sp"
-        self.circuit_path = self.src_path / f"{self.circuit_name}.sp"
-
-        self.parameter_range_config_path = DEFAULT_PARAMETER_RANGE_CONFIG_PATH
-
-        self.parameter_aliases = dict(parameter_aliases or {})
-        self.device_rules = tuple(device_rules)
+        logger_name = f"analog_agent.sampling.{self.circuit_name}.{uuid.uuid4().hex}"
+        self.logger = create_logger(logger_name, level=log_level, console=console_log)
 
         try:
             self._find_history()
-            self._add_file_handler()
-            self.logger.info("开始初始化采样控制器：circuit=%s, type=%s", self.circuit_name, self.circuit_type)
-            self.logger.info("电路工作目录：%s", self.src_path)
-            self.logger.info("历史状态：%s", "已存在" if self.has_history else "新建")
+            self.log_path = self.src_path / "logs" / "sampling.log"
+            add_rotating_file_handler(self.logger, self.log_path, level=log_level)
+            self.logger.info(
+                "开始初始化采样控制器：circuit=%s, type=%s, history=%s",
+                self.circuit_name,
+                self.circuit_type,
+                self.has_history,
+            )
 
-            self._validate_input_paths()
-
-            # 1. 读取参数名称
-            self.parameter_name_lst = read_parameter_names(self.parameter_path)
-            self.logger.info("读取到 %d 个电路参数", len(self.parameter_name_lst))
-            self.logger.debug("参数名称：%s", self.parameter_name_lst)
-
-            # 2. 判断每个参数控制的器件类型和控制属性
+            parser_logger = get_child_logger(self.logger, "parser")
+            analyzer_logger = get_child_logger(self.logger, "analyzer")
+            self.parameter_name_lst = read_parameter_names(self.parameter_path, logger=parser_logger)
             self.parameter_spec_lst: list[ParameterSpec] = analyze_parameter_usage(
                 circuit_paths=self.circuit_path,
                 parameter_name_lst=self.parameter_name_lst,
                 parameter_aliases=self.parameter_aliases,
                 device_rules=self.device_rules,
+                logger=analyzer_logger,
             )
-            self.logger.info("电路参数用途分析完成")
-            self.logger.debug("参数用途：%s", self.parameter_spec_lst)
-
-            # 3. 从 sample_optimize/parameter_ranges.json 读取范围
             (
                 self.control_parameter_ranges,
                 self.device_control_ranges,
                 self.parameter_overrides,
             ) = _load_parameter_range_config(
-                config_path=self.parameter_range_config_path,
-                circuit_name=self.circuit_name,
+                self.parameter_range_config_path,
+                self.circuit_name,
+                logger=analyzer_logger,
             )
-            self.logger.info("参数范围配置读取完成：%s", self.parameter_range_config_path)
-
-            # 4. 得到与 parameter_name_lst 顺序一致的 bounds
             self.bounds: list[Bounds] = resolve_parameter_bounds(
-                parameter_specs=self.parameter_spec_lst,
-                control_parameter_ranges=self.control_parameter_ranges,
-                device_control_ranges=self.device_control_ranges,
-                parameter_overrides=self.parameter_overrides,
+                self.parameter_spec_lst,
+                self.control_parameter_ranges,
+                self.device_control_ranges,
+                self.parameter_overrides,
+                logger=analyzer_logger,
             )
-            self.logger.info("已解析 %d 组参数范围", len(self.bounds))
-            self.logger.debug("参数范围：%s", dict(zip(self.parameter_name_lst, self.bounds)))
 
             self.random_sampler = Random_Sampler(
                 self.parameter_path,
                 self.parameter_name_lst,
                 self.bounds,
                 seed,
+                logger=get_child_logger(self.logger, "sampler.random"),
             )
-
             self.lhs_sampler = LHS_Sampler(
                 self.parameter_path,
                 self.parameter_name_lst,
                 self.bounds,
                 seed,
+                logger=get_child_logger(self.logger, "sampler.lhs"),
             )
-
             self.sobol_sampler = Sobol_Sampler(
                 self.parameter_path,
                 self.parameter_name_lst,
                 self.bounds,
                 seed,
+                logger=get_child_logger(self.logger, "sampler.sobol"),
             )
-            self.simulator = Simulator(self.metrics, self.circuit_type, self.circuit_name, output_path=self.target_path)
-            self.logger.info("采样控制器初始化完成：metrics=%s, seed=%d", self.metrics, seed)
+            self.simulator = Simulator(
+                metrics=self.metrics,
+                circuit_type=self.circuit_type,
+                circuit_name=self.circuit_name,
+                simulate_condition_path=simulation_condition_path,
+                output_path=self.target_path,
+                ngspice_command=ngspice_command,
+                timeout_seconds=simulation_timeout_seconds,
+                keep_workspace=keep_workspace,
+                logger=get_child_logger(self.logger, "simulator"),
+            )
+            self.history_store = SamplingHistoryStore(
+                circuit_path=self.src_path,
+                circuit_name=self.circuit_name,
+                circuit_type=self.circuit_type,
+                parameter_names=self.parameter_name_lst,
+                metric_names=self.simulator.metrics,
+                logger=get_child_logger(self.logger, "history"),
+            )
+            self.logger.info(
+                "采样控制器初始化完成：parameters=%d, metrics=%s, seed=%s",
+                len(self.parameter_name_lst),
+                self.metrics,
+                self.seed,
+            )
         except Exception:
             self.logger.exception("采样控制器初始化失败：circuit=%s", self.circuit_name)
             raise
 
-    def _create_logger(self) -> logging.Logger:
-        logger = logging.getLogger(f"{__name__}.{self.circuit_name}.{id(self)}")
-        logger.setLevel(self.log_level)
-        logger.propagate = False
+    def _set_circuit_paths(self) -> None:
+        self.circuit_path = self.src_path / f"{self.circuit_name}.sp"
+        self.parameter_path = self.src_path / f"{self.circuit_name}_params.sp"
 
-        if self.console_log:
-            console_handler = logging.StreamHandler()
-            console_handler.setLevel(self.log_level)
-            console_handler.setFormatter(self._get_log_formatter())
-            logger.addHandler(console_handler)
-        else:
-            logger.addHandler(logging.NullHandler())
+    def _validate_circuit_directory(self, path: Path, label: str) -> None:
+        if not path.is_dir():
+            raise NotADirectoryError(f"{label}不存在：{path}")
+        circuit_path = path / f"{self.circuit_name}.sp"
+        parameter_path = path / f"{self.circuit_name}_params.sp"
+        if not circuit_path.is_file():
+            raise FileNotFoundError(f"{label}中不存在电路文件：{circuit_path}")
+        if not parameter_path.is_file():
+            raise FileNotFoundError(f"{label}中不存在参数文件：{parameter_path}")
 
-        return logger
-
-    @staticmethod
-    def _get_log_formatter() -> logging.Formatter:
-        return logging.Formatter(
-            fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-
-    def _add_file_handler(self) -> None:
-        log_directory = self.src_path / "logs"
-        log_directory.mkdir(parents=True, exist_ok=True)
-        self.log_path = log_directory / "sampling_controller.log"
-
-        file_handler = RotatingFileHandler(
-            filename=self.log_path,
-            maxBytes=10 * 1024 * 1024,
-            backupCount=5,
-            encoding="utf-8",
-        )
-        file_handler.setLevel(self.log_level)
-        file_handler.setFormatter(self._get_log_formatter())
-        self.logger.addHandler(file_handler)
-
-    def _validate_input_paths(self) -> None:
-        self.logger.debug("开始检查输入路径")
-
-        if not self.src_path.is_dir():
-            raise NotADirectoryError(f"电路目录不存在：{self.src_path}")
-
-        if not self.parameter_path.is_file():
-            raise FileNotFoundError(f"参数文件不存在：{self.parameter_path}")
-
-        if not self.circuit_path.is_file():
-            raise FileNotFoundError(f"电路文件不存在：{self.circuit_path}")
-
-        if not self.parameter_range_config_path.is_file():
-            raise FileNotFoundError(
-                f"参数范围配置文件不存在：{self.parameter_range_config_path}"
-            )
-
-        self.logger.info("输入路径检查完成")
-    
     def _find_history(self) -> None:
-        """
-        如果历史电路目录存在，直接使用历史目录。
-
-        如果不存在，将 src_path 整体移动到：
-            target_path / circuit_name
-
-        移动成功后，原始 src_path 自动删除。
-        """
-
         source_path = self.src_path.resolve()
         history_path = (self.target_path / self.circuit_name).resolve()
 
         if history_path.exists():
-            if not history_path.is_dir():
-                raise NotADirectoryError(
-                    f"历史路径存在，但不是文件夹：{history_path}"
-                )
-
-            self.logger.info("发现历史电路目录：%s", history_path)
+            self._validate_circuit_directory(history_path, "历史电路目录")
+            if source_path != history_path and source_path.exists():
+                self.logger.warning("历史目录已存在，本次传入的 src_path 将被忽略：%s", source_path)
             self.has_history = True
             self.src_path = history_path
-
+            self.logger.info("使用历史电路目录：%s", history_path)
         else:
-            if not source_path.is_dir():
-                raise NotADirectoryError(f"原始电路目录不存在：{source_path}")
-
+            self._validate_circuit_directory(source_path, "原始电路目录")
             if source_path in history_path.parents:
                 raise ValueError(
                     "历史数据库目录不能位于原始电路目录内部："
                     f"source={source_path}, target={history_path}"
                 )
-
             self.target_path.mkdir(parents=True, exist_ok=True)
-
-            self.logger.info("未发现历史电路目录，开始移动：%s -> %s", source_path, history_path)
-
-            # 将整个源目录移动到数据库目录。
-            # 成功后 source_path 自动消失。
-            moved_path = shutil.move(
-                str(source_path),
-                str(history_path),
-            )
-
-            moved_path = Path(moved_path).resolve()
-
-            if moved_path != history_path:
+            self.logger.info("移动电路目录到历史数据库：%s -> %s", source_path, history_path)
+            moved_path = Path(shutil.move(str(source_path), str(history_path))).resolve()
+            if moved_path != history_path or source_path.exists():
                 raise RuntimeError(
-                    "电路目录移动后的路径与预期不一致："
-                    f"expected={history_path}, actual={moved_path}"
+                    "电路目录移动结果异常："
+                    f"expected={history_path}, actual={moved_path}, source_exists={source_path.exists()}"
                 )
-
-            if source_path.exists():
-                raise RuntimeError(
-                    f"电路目录移动后，原始目录仍然存在：{source_path}"
-                )
-
             self.has_history = False
             self.src_path = history_path
-            self.logger.info("电路目录移动完成：%s", history_path)
 
-        self.circuit_path = self.src_path / f"{self.circuit_name}.sp"
-        self.parameter_path = self.src_path / f"{self.circuit_name}_params.sp"
+        self._set_circuit_paths()
+        if not self.parameter_range_config_path.is_file():
+            raise FileNotFoundError(f"参数范围配置文件不存在：{self.parameter_range_config_path}")
 
-        if not self.circuit_path.is_file():
-            raise FileNotFoundError(
-                f"数据库目录中不存在电路文件：{self.circuit_path}"
-            )
-
-        if not self.parameter_path.is_file():
-            raise FileNotFoundError(
-                f"数据库目录中不存在参数文件：{self.parameter_path}"
-            )
-            
     def _split_number(self, n_points: int) -> Tuple[int, int, int]:
-        """
-        将总采样数划分给 Random、LHS 和 Sobol。
-
-        Sobol 的采样数必须是 2 的幂，Random 和 LHS
-        平均分配剩余采样数。
-
-        Returns:
-            (random_num, lhs_num, sobol_num)
-        """
-
         if isinstance(n_points, bool) or not isinstance(n_points, int):
             raise TypeError("n_points 必须是整数")
-
         if n_points < 3:
             raise ValueError("n_points 必须至少为 3，确保三种采样方法都有采样点")
 
         ideal_sobol_num = n_points / 3
-
-        lower_exponent = math.floor(math.log2(ideal_sobol_num))
-        lower_power = 2 ** lower_exponent
+        lower_power = 2 ** math.floor(math.log2(ideal_sobol_num))
         upper_power = lower_power * 2
-
         lower_distance = ideal_sobol_num - lower_power
         upper_distance = upper_power - ideal_sobol_num
-
-        # 选择较大的 2 次幂后，Random 和 LHS 必须至少各保留一个采样点。
-        upper_power_available = n_points - upper_power >= 2
-
-        if upper_distance < lower_distance and upper_power_available:
-            sobol_num = upper_power
-        else:
-            sobol_num = lower_power
-
+        sobol_num = (
+            upper_power
+            if upper_distance < lower_distance and n_points - upper_power >= 2
+            else lower_power
+        )
         remaining_num = n_points - sobol_num
         random_num = remaining_num // 2
         lhs_num = remaining_num - random_num
-
         self.logger.info(
-            "采样数量划分完成：total=%d, random=%d, lhs=%d, sobol=%d",
+            "采样数量划分：total=%d, random=%d, lhs=%d, sobol=%d",
             n_points,
             random_num,
             lhs_num,
             sobol_num,
         )
-
         return random_num, lhs_num, sobol_num
-            
+
+    @staticmethod
+    def _next_power_of_two(value: int) -> int:
+        return 1 if value <= 1 else 1 << (value - 1).bit_length()
+
+    def _generate_unique_points(
+        self,
+        sampler: Any,
+        method: str,
+        target_count: int,
+        n_workers: int,
+        accepted_keys: set[str],
+    ) -> tuple[np.ndarray, int]:
+        accepted_rows: list[np.ndarray] = []
+        skipped_count = 0
+
+        for round_index in range(1, self.max_duplicate_rounds + 1):
+            remaining = target_count - len(accepted_rows)
+            if remaining == 0:
+                break
+            batch_size = self._next_power_of_two(remaining) if method == "sobol" else remaining
+            candidates = np.asarray(
+                sampler.generate_sample_point(batch_size, n_workers),
+                dtype=float,
+            )
+            if candidates.ndim != 2 or candidates.shape[1] != len(self.parameter_name_lst):
+                raise RuntimeError(f"{method} 采样器返回了错误形状：{candidates.shape}")
+
+            candidate_keys = [self.history_store.design_key(row) for row in candidates]
+            historical_keys = self.history_store.find_existing_keys(candidate_keys)
+            accepted_this_round = 0
+
+            for row, design_key in zip(candidates, candidate_keys):
+                if design_key in historical_keys or design_key in accepted_keys:
+                    skipped_count += 1
+                    continue
+                accepted_rows.append(row.copy())
+                accepted_keys.add(design_key)
+                accepted_this_round += 1
+                if len(accepted_rows) == target_count:
+                    break
+
+            self.logger.debug(
+                "去重补点：method=%s, round=%d, generated=%d, accepted=%d, remaining=%d",
+                method,
+                round_index,
+                len(candidates),
+                accepted_this_round,
+                target_count - len(accepted_rows),
+            )
+
+        if len(accepted_rows) != target_count:
+            raise RuntimeError(
+                f"{method} 在 {self.max_duplicate_rounds} 轮内无法补足唯一采样点："
+                f"required={target_count}, actual={len(accepted_rows)}。"
+                "参数空间可能已经耗尽，请扩大范围或减小采样数量。"
+            )
+
+        result = np.vstack(accepted_rows)
+        self.logger.info(
+            "%s 唯一采样点生成完成：points=%d, duplicate_skipped=%d",
+            method,
+            len(result),
+            skipped_count,
+        )
+        return result, skipped_count
+
     def sample(
         self,
         n_points: int,
@@ -548,100 +433,106 @@ class Sampling_Controller:
     ) -> SamplingResult:
         if isinstance(n_points, bool) or not isinstance(n_points, int):
             raise TypeError("n_points 必须是整数")
-
         if n_points < 3:
             raise ValueError("n_points 必须至少为 3")
-
         if isinstance(n_workers, bool) or not isinstance(n_workers, int):
             raise TypeError("n_workers 必须是整数")
-
         if n_workers <= 0:
             raise ValueError("n_workers 必须大于 0")
+        if not isinstance(continue_on_error, bool):
+            raise TypeError("continue_on_error 必须是 bool")
 
-        self.logger.info(
-            "准备开始采样：n_points=%d, n_workers=%d",
-            n_points,
-            n_workers,
+        random_num, lhs_num, sobol_num = self._split_number(n_points)
+        allocation = {"random": random_num, "lhs": lhs_num, "sobol": sobol_num}
+        run_id = self.history_store.create_run(
+            requested_points=n_points,
+            n_workers=n_workers,
+            allocation=allocation,
+            config={
+                "seed": self.seed,
+                "continue_on_error": continue_on_error,
+                "bounds": self.bounds,
+                "raw_metrics": self.metrics,
+            },
         )
+        run_finalized = False
+        self.logger.info("开始采样运行：run_id=%s, points=%d", run_id, n_points)
 
         try:
-            random_num, lhs_num, sobol_num = self._split_number(n_points)
-
-            self.logger.info(
-                "采样数量划分：Random=%d, LHS=%d, Sobol=%d",
-                random_num,
-                lhs_num,
-                sobol_num,
+            accepted_keys: set[str] = set()
+            random_points, random_skipped = self._generate_unique_points(
+                self.random_sampler, "random", random_num, n_workers, accepted_keys
+            )
+            lhs_points, lhs_skipped = self._generate_unique_points(
+                self.lhs_sampler, "lhs", lhs_num, n_workers, accepted_keys
+            )
+            sobol_points, sobol_skipped = self._generate_unique_points(
+                self.sobol_sampler, "sobol", sobol_num, n_workers, accepted_keys
             )
 
-            random_sample_points = self.random_sampler.generate_sample_point(
-                random_num,
-                n_workers,
+            all_sample_points = np.vstack([random_points, lhs_points, sobol_points])
+            sampling_methods = (
+                ["random"] * random_num
+                + ["lhs"] * lhs_num
+                + ["sobol"] * sobol_num
             )
-
-            lhs_sample_points = self.lhs_sampler.generate_sample_point(
-                lhs_num,
-            )
-
-            sobol_sample_points = self.sobol_sampler.generate_sample_point(
-                sobol_num,
-            )
-
-            all_sample_points = np.vstack(
-                [
-                    random_sample_points,
-                    lhs_sample_points,
-                    sobol_sample_points,
-                ]
-            )
-
-            if all_sample_points.shape[0] != n_points:
+            if all_sample_points.shape != (n_points, len(self.parameter_name_lst)):
                 raise RuntimeError(
-                    "最终采样点数量不正确："
-                    f"expected={n_points}, actual={all_sample_points.shape[0]}"
+                    "最终采样点形状不正确："
+                    f"expected={(n_points, len(self.parameter_name_lst))}, actual={all_sample_points.shape}"
                 )
 
-            self.logger.info(
-                "采样点生成完成：shape=%s",
-                all_sample_points.shape,
-            )
-
-            sample_results = self.simulator.simulate(
+            simulation_result = self.simulator.simulate_batch(
                 circuit_path=self.src_path,
                 n_workers=n_workers,
                 design_parameters_array=all_sample_points,
                 continue_on_error=continue_on_error,
             )
-
-            self.logger.info(
-                "SPICE 仿真完成：shape=%s",
-                sample_results.shape,
-            )
-
-            self.simulator.write_simulate_result(
+            failed_num = len(simulation_result.failure_records)
+            self.history_store.write_batch(
+                run_id=run_id,
                 design_parameters=all_sample_points,
-                metrics=sample_results,
-                design_parameter_name_lst=self.parameter_name_lst,
+                metrics=simulation_result.metrics,
+                sampling_methods=sampling_methods,
+                failure_records=simulation_result.failure_records,
             )
+            self.history_store.mark_run_completed(run_id, failed_num)
+            run_finalized = True
+            self.history_store.export_csv()
 
-            result_path = self.target_path / self.circuit_name
-
+            duplicate_skipped_num = random_skipped + lhs_skipped + sobol_skipped
             self.logger.info(
-                "采样结果保存完成：%s",
-                result_path,
+                "采样运行完成：run_id=%s, persisted=%d, failed=%d, duplicate_skipped=%d",
+                run_id,
+                n_points,
+                failed_num,
+                duplicate_skipped_num,
             )
-
             return SamplingResult(
-                target_path=result_path,
+                target_path=self.src_path,
+                database_path=self.history_store.database_path,
+                design_csv_path=self.history_store.design_csv_path,
+                metrics_csv_path=self.history_store.metrics_csv_path,
+                run_id=run_id,
+                requested_num=n_points,
                 random_num=random_num,
                 lhs_num=lhs_num,
                 sobol_num=sobol_num,
-                success=True,
+                failed_num=failed_num,
+                duplicate_skipped_num=duplicate_skipped_num,
+                success=failed_num == 0,
             )
-
-        except Exception:
-            self.logger.exception(
-                "电路采样失败：circuit=%s",
-                self.circuit_name,
-            )
+        except Exception as exc:
+            if not run_finalized:
+                self.history_store.mark_run_failed(run_id, exc)
+            self.logger.exception("电路采样失败：run_id=%s, circuit=%s", run_id, self.circuit_name)
             raise
+
+    def close(self) -> None:
+        close_logger(self.logger)
+
+    def __enter__(self) -> "Sampling_Controller":
+        return self
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
+        self.close()

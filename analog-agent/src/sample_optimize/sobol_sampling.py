@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from pathlib import Path
 from typing import (
     Optional,
@@ -28,6 +30,7 @@ class Sobol_Sampler(_Sampler_Optimizer):
             Tuple[float, float, float]
         ],
         seed: int = 42,
+        logger: Optional[logging.Logger] = None,
     ) -> None:
 
         super().__init__(
@@ -35,7 +38,9 @@ class Sobol_Sampler(_Sampler_Optimizer):
             parameter_name_lst,
             bounds,
             seed,
+            logger,
         )
+        self.seed_sequence = np.random.SeedSequence(seed)
 
     def generate_sample_point(
         self,
@@ -74,15 +79,19 @@ class Sobol_Sampler(_Sampler_Optimizer):
                 f"现在为 {n_points}"
             )
 
+        self.logger.info("开始 Sobol 采样：points=%d", n_points)
         m = (
             n_points.bit_length()
             - 1
         )
 
+        child_seed = self.seed_sequence.spawn(1)[0]
+        sampler_seed = int(child_seed.generate_state(1, dtype=np.uint32)[0])
+
         sampler = qmc.Sobol(
             d=len(self.bounds),
             scramble=True,
-            seed=self.seed,
+            seed=sampler_seed,
         )
 
         unit_samples = (
@@ -115,6 +124,6 @@ class Sobol_Sampler(_Sampler_Optimizer):
             )
         )
 
-        return self._project_to_legal_grid(
-            continuous_samples
-        )
+        result = self._project_to_legal_grid(continuous_samples)
+        self.logger.info("Sobol 采样完成：shape=%s", result.shape)
+        return result

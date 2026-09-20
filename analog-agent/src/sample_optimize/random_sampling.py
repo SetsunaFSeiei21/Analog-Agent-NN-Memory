@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from multiprocessing import Pool
 from pathlib import Path
 from typing import (
@@ -29,6 +31,7 @@ class Random_Sampler(_Sampler_Optimizer):
             Tuple[float, float, float]
         ],
         seed: int = 42,
+        logger: Optional[logging.Logger] = None,
     ) -> None:
 
         super().__init__(
@@ -36,6 +39,7 @@ class Random_Sampler(_Sampler_Optimizer):
             parameter_name_lst,
             bounds,
             seed,
+            logger,
         )
 
         self.seed_sequence = (
@@ -84,19 +88,8 @@ class Random_Sampler(_Sampler_Optimizer):
                 )
             )
 
-            grid = (
-                lower_bound
-                + np.arange(
-                    max_step_index + 1
-                )
-                * step
-            )
-
-            column = rng.choice(
-                grid,
-                size=chunk_size,
-                replace=True,
-            )
+            step_indices = rng.integers(0, max_step_index + 1, size=chunk_size)
+            column = lower_bound + step_indices * step
 
             columns.append(column)
 
@@ -143,6 +136,7 @@ class Random_Sampler(_Sampler_Optimizer):
             n_points,
             n_workers,
         )
+        self.logger.info("开始 Random 采样：points=%d, workers=%d", n_points, worker_count)
 
         (
             base_chunk_size,
@@ -197,7 +191,9 @@ class Random_Sampler(_Sampler_Optimizer):
                     tasks,
                 )
 
-        return np.concatenate(
+        result = np.concatenate(
             chunks,
             axis=0,
         )
+        self.logger.info("Random 采样完成：shape=%s", result.shape)
+        return result

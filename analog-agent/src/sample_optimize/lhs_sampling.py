@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from pathlib import Path
 from typing import (
     Optional,
@@ -27,6 +29,7 @@ class LHS_Sampler(_Sampler_Optimizer):
             Tuple[float, float, float]
         ],
         seed: int = 42,
+        logger: Optional[logging.Logger] = None,
     ) -> None:
 
         super().__init__(
@@ -34,7 +37,9 @@ class LHS_Sampler(_Sampler_Optimizer):
             parameter_name_lst,
             bounds,
             seed,
+            logger,
         )
+        self.seed_sequence = np.random.SeedSequence(seed)
 
     def generate_sample_point(
         self,
@@ -63,9 +68,8 @@ class LHS_Sampler(_Sampler_Optimizer):
                 "n_points must be greater than 0."
             )
 
-        generator = np.random.default_rng(
-            self.seed
-        )
+        self.logger.info("开始 LHS 采样：points=%d", n_points)
+        generator = np.random.default_rng(self.seed_sequence.spawn(1)[0])
 
         dimension = len(
             self.bounds
@@ -119,6 +123,6 @@ class LHS_Sampler(_Sampler_Optimizer):
             )
         )
 
-        return self._project_to_legal_grid(
-            continuous_samples
-        )
+        result = self._project_to_legal_grid(continuous_samples)
+        self.logger.info("LHS 采样完成：shape=%s", result.shape)
+        return result

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import (
@@ -10,6 +12,8 @@ from typing import (
 )
 
 import numpy as np
+
+from ..utils.spice_parser import rewrite_parameter_values
 
 
 Bounds = Tuple[float, float, float]
@@ -23,6 +27,7 @@ class Sampler_Optimizer(ABC):
         parameter_name_lst: Sequence[str],
         bounds: Sequence[Bounds],
         seed: int = 42,
+        logger: Optional[logging.Logger] = None,
     ) -> None:
 
         self.circuit_param_path = Path(
@@ -39,6 +44,7 @@ class Sampler_Optimizer(ABC):
         ]
 
         self.seed = seed
+        self.logger = logger or logging.getLogger(__name__)
 
         if (
             len(self.parameter_name_lst)
@@ -245,19 +251,10 @@ class Sampler_Optimizer(ABC):
                 f"!= {len(value_lst)}"
             )
 
-        write_content_lst = [
-            f".param {parameter_name} = {value}"
-
-            for parameter_name, value in zip(
-                self.parameter_name_lst,
-                value_lst,
-            )
-        ]
-
-        self.circuit_param_path.write_text(
-            "\n".join(write_content_lst)
-            + "\n",
-            encoding="utf-8",
+        rewrite_parameter_values(
+            self.circuit_param_path,
+            dict(zip(self.parameter_name_lst, value_lst)),
+            logger=self.logger,
         )
 
     @abstractmethod

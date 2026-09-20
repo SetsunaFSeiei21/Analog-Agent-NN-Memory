@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import re
 
@@ -434,6 +435,7 @@ def analyze_parameter_usage(
     device_rules: Sequence[
         DeviceRule
     ] = DEFAULT_DEVICE_RULES,
+    logger: Optional[logging.Logger] = None,
 ) -> List[ParameterSpec]:
     """
     分析所有设计变量控制的器件类型和控制参数。
@@ -452,9 +454,8 @@ def analyze_parameter_usage(
     VALUE 同时控制 RESISTOR.R 和 CAPACITOR.C：报错。
     """
 
-    instances = parse_spice_instances(
-        circuit_paths
-    )
+    active_logger = logger or logging.getLogger(__name__)
+    instances = parse_spice_instances(circuit_paths, logger=active_logger)
 
     aliases = {
         parameter_name.casefold(): (
@@ -570,6 +571,11 @@ def analyze_parameter_usage(
             )
         )
 
+    active_logger.debug(
+        "参数用途分析完成：parameters=%d, instances=%d",
+        len(parameter_specs),
+        len(instances),
+    )
     return parameter_specs
 
 
@@ -649,6 +655,7 @@ def resolve_parameter_bounds(
     parameter_overrides: Optional[
         Mapping[str, Bounds]
     ] = None,
+    logger: Optional[logging.Logger] = None,
 ) -> List[Bounds]:
     """
     根据分析结果查询参数范围。
@@ -662,6 +669,7 @@ def resolve_parameter_bounds(
     最终输出顺序与 parameter_specs 完全一致。
     """
 
+    active_logger = logger or logging.getLogger(__name__)
     normalized_control_ranges = {
 
         control_parameter.upper(): bounds
@@ -760,4 +768,5 @@ def resolve_parameter_bounds(
             )
         )
 
+    active_logger.debug("参数范围解析完成：count=%d", len(resolved_bounds))
     return resolved_bounds
