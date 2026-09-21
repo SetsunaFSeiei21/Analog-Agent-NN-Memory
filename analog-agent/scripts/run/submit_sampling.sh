@@ -16,10 +16,13 @@ NGSPICE_COMMAND="ngspice"
 SIMULATION_CONDITION_PATH=""         # 留空使用项目内默认 JSON。
 CONTINUE_ON_ERROR=1                  # 单点失败时记录失败数据并继续。
 KEEP_WORKSPACE=0                     # 改为 1 保留 ngspice 工作区。
-SLURM_ACCOUNT=""                     # 留空使用集群默认账号。
-SLURM_PARTITION=""                   # 留空使用集群默认分区。
-SLURM_MEM="16G"
-SLURM_TIME="1-00:00:00"
+SLURM_ACCOUNT="b_phzhwu"
+SLURM_PARTITION="ex01A800"
+SLURM_GPUS=1
+SLURM_MEM="80G"
+SLURM_TIME="10-00:00:00"
+SLURM_MAIL_USER="934104070@qq.com"
+SLURM_MAIL_TYPE="BEGIN,END,FAIL"
 DRY_RUN=0                             # 改成 1 只打印 sbatch 命令。
 
 if (( $# != 0 )); then
@@ -53,8 +56,11 @@ OPTIONS=(
     --parsable --job-name="sample-$CIRCUIT_NAME"
     --output="$LOG_DIR/$CIRCUIT_NAME-%j.out"
     --error="$LOG_DIR/$CIRCUIT_NAME-%j.err"
-    --cpus-per-task="$N_WORKERS" --mem="$SLURM_MEM"
-    --time="$SLURM_TIME" --export=ALL
+    --nodes=1 --ntasks=1 --ntasks-per-node=1
+    --cpus-per-task="$N_WORKERS" --gres="gpu:$SLURM_GPUS"
+    --mem="$SLURM_MEM" --time="$SLURM_TIME"
+    --mail-user="$SLURM_MAIL_USER" --mail-type="$SLURM_MAIL_TYPE"
+    --export=ALL
 )
 if [[ -n "$SLURM_ACCOUNT" ]]; then OPTIONS+=(--account="$SLURM_ACCOUNT"); fi
 if [[ -n "$SLURM_PARTITION" ]]; then OPTIONS+=(--partition="$SLURM_PARTITION"); fi

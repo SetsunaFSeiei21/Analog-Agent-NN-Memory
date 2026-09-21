@@ -6,17 +6,20 @@ CIRCUIT_NAME="5t_ota"
 CIRCUIT_TYPE="single_ended_opamp"
 SOURCE_DIR="Sample_Optimizer_Circuit/5t_ota"
 N_POINTS=6
-N_WORKERS=2
+N_WORKERS=8
 METRICS=(DC_GAIN UGF PM POWER)
 SEED=42
 CONDA_ENV="newbase"
 CONDA_HOME=""                       # 默认尝试 /share/software/anaconda3 或当前 conda。
 NGSPICE_COMMAND="ngspice"
 SIMULATION_CONDITION_PATH=""         # 留空使用项目内默认 JSON。
-SLURM_ACCOUNT=""                     # 留空使用集群默认账号。
-SLURM_PARTITION=""                   # 留空使用集群默认分区。
-SLURM_MEM="8G"
-SLURM_TIME="00:30:00"
+SLURM_ACCOUNT="b_phzhwu"
+SLURM_PARTITION="ex01A800"
+SLURM_GPUS=1
+SLURM_MEM="80G"
+SLURM_TIME="10-00:00:00"
+SLURM_MAIL_USER="934104070@qq.com"
+SLURM_MAIL_TYPE="BEGIN,END,FAIL"
 DRY_RUN=0                             # 改成 1 只打印 sbatch 命令。
 
 if (( $# != 0 )); then
@@ -50,8 +53,11 @@ mkdir -p "$LOG_DIR"
 OPTIONS=(
     --parsable --job-name="smoke-${CIRCUIT_NAME//_/-}"
     --output="$LOG_DIR/%j.out" --error="$LOG_DIR/%j.err"
-    --cpus-per-task="$N_WORKERS" --mem="$SLURM_MEM"
-    --time="$SLURM_TIME" --export=ALL
+    --nodes=1 --ntasks=1 --ntasks-per-node=1
+    --cpus-per-task="$N_WORKERS" --gres="gpu:$SLURM_GPUS"
+    --mem="$SLURM_MEM" --time="$SLURM_TIME"
+    --mail-user="$SLURM_MAIL_USER" --mail-type="$SLURM_MAIL_TYPE"
+    --export=ALL
 )
 if [[ -n "$SLURM_ACCOUNT" ]]; then OPTIONS+=(--account="$SLURM_ACCOUNT"); fi
 if [[ -n "$SLURM_PARTITION" ]]; then OPTIONS+=(--partition="$SLURM_PARTITION"); fi
