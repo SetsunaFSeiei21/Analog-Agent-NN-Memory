@@ -1,7 +1,7 @@
 * SKY130 OTA core with internally biased NMOS tail
 * Standard testbench interface: VINP VINN VOUT VDD VSS
 
-.include "five_t_ota_params.sp"
+.include "5t_ota_params.sp"
 
 .subckt DUT VINP VINN VOUT VDD VSS
 
