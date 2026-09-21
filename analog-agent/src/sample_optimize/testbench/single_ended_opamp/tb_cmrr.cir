@@ -3,7 +3,7 @@
 *
 * Standard DUT interface:
 *
-* .subckt DUT VINP VINN VOUT VDD VSS IBIAS
+* .subckt DUT VINP VINN VOUT VDD VSS
 *
 * Metrics:
 *   Differential-Mode Gain  ADM
@@ -95,11 +95,6 @@ ECM_P INP_CM CM_DC_P CM_AC 0 1
 ECM_N INN_CM CM_DC_N CM_AC 0 1
 
 
-* Independent bias current for CM DUT
-
-IBIAS_CM VDD IBIAS_CM_NODE DC {{IBIAS}}
-
-
 * DUT
 
 XDUT_CM
@@ -108,7 +103,6 @@ XDUT_CM
 + OUT_CM
 + VDD
 + VSS
-+ IBIAS_CM_NODE
 + DUT
 
 
@@ -168,11 +162,6 @@ EDM_P INP_DM DM_DC_P DM_AC 0 0.5
 EDM_N INN_DM DM_DC_N DM_AC 0 -0.5
 
 
-* Independent bias current for DM DUT
-
-IBIAS_DM VDD IBIAS_DM_NODE DC {{IBIAS}}
-
-
 * DUT
 
 XDUT_DM
@@ -181,7 +170,6 @@ XDUT_DM
 + OUT_DM
 + VDD
 + VSS
-+ IBIAS_DM_NODE
 + DUT
 
 

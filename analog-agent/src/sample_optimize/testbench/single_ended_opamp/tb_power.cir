@@ -3,7 +3,7 @@
 *
 * Standard DUT interface:
 *
-* .subckt DUT VINP VINN VOUT VDD VSS IBIAS
+* .subckt DUT VINP VINN VOUT VDD VSS
 *
 * Measurements:
 *
@@ -46,21 +46,6 @@ VSS_SRC VSS 0 DC {{VSS}}
 
 
 * ============================================================
-* Bias Current
-*
-* Positive IBIAS flows:
-*
-*   VDD -> IBIAS -> DUT
-*
-* Since IBIAS is supplied from the VDD rail,
-* its current is included in the current measured
-* through VDD_SRC.
-* ============================================================
-
-IBIAS_SRC VDD IBIAS DC {{IBIAS}}
-
-
-* ============================================================
 * Input / Operating Point
 *
 * DUT is configured as a unity-gain follower:
@@ -85,7 +70,6 @@ XDUT
 + OUT
 + VDD
 + VSS
-+ IBIAS
 + DUT
 
 

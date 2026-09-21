@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -23,7 +24,7 @@ from src.sample_optimize import (  # noqa: E402
     Sampling_Controller,
     Sobol_Sampler,
 )
-from src.utils import parse_spice_instances, read_parameter_names, rewrite_parameter_values  # noqa: E402
+from src.utils import analyze_parameter_usage, parse_spice_instances, read_parameter_names, rewrite_parameter_values  # noqa: E402
 
 
 class ParserAndSamplerTest(unittest.TestCase):
@@ -53,6 +54,23 @@ class ParserAndSamplerTest(unittest.TestCase):
             )
             instances = parse_spice_instances(path)
             self.assertEqual([instance.instance_name for instance in instances], ["RLOAD"])
+
+    def test_current_source_is_classified_from_dc_value(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "circuit.sp"
+            path.write_text(
+                "* Independent current sources inside the DUT\n"
+                ".subckt DUT VINP VINN VOUT VDD VSS\n"
+                "IBIAS VDD BIAS DC {IBIAS_A}\n"
+                "IREF VDD REF {IREF_A}\n"
+                ".ends DUT\n",
+                encoding="utf-8",
+            )
+            instances = parse_spice_instances(path)
+            self.assertEqual([instance.positional_value for instance in instances], ["{IBIAS_A}", "{IREF_A}"])
+            specs = analyze_parameter_usage(path, ["IBIAS_A", "IREF_A"])
+            self.assertEqual([(spec.device_type, spec.control_parameter) for spec in specs],
+                             [("CURRENT_SOURCE", "I"), ("CURRENT_SOURCE", "I")])
 
     def test_samplers_return_exact_count_and_legal_grid(self) -> None:
         bounds = [(0.0, 1.0, 0.35), (1.0, 2.0, 0.25)]
@@ -135,12 +153,13 @@ class ControllerIntegrationTest(unittest.TestCase):
     def _write_circuit(self, source_path: Path) -> None:
         source_path.mkdir()
         (source_path / "demo_params.sp").write_text(
-            ".param WN=2\n.param LN=0.5\n",
+            ".param WN=2\n.param LN=0.5\n.param IBIAS_A=10e-6\n",
             encoding="utf-8",
         )
         (source_path / "demo.sp").write_text(
             '.include "demo_params.sp"\n'
-            ".subckt DUT VINP VINN VOUT VDD VSS IBIAS\n"
+            ".subckt DUT VINP VINN VOUT VDD VSS\n"
+            "IBIAS_SRC VDD BIAS DC {IBIAS_A}\n"
             "XMN VOUT VINP VSS VSS sky130_fd_pr__nfet_01v8 W={WN} L={LN}\n"
             ".ends DUT\n",
             encoding="utf-8",
@@ -155,7 +174,6 @@ class ControllerIntegrationTest(unittest.TestCase):
             "VDD": 1.8,
             "VSS": 0.0,
             "VCM": 0.9,
-            "IBIAS": "10u",
             "CL": "1p",
             "AC_POINTS_PER_DEC": 10,
             "AC_START": 1,
@@ -214,6 +232,71 @@ class ControllerIntegrationTest(unittest.TestCase):
             self.assertIn("sampler.random", log_content)
             self.assertIn("simulator", log_content)
             self.assertIn("history", log_content)
+
+    def test_integrated_bias_sampling_and_all_testbenches(self) -> None:
+        fake_ngspice = Path(__file__).with_name("fake_ngspice.py").resolve()
+        example = ANALOG_AGENT_PATH / "examples" / "five_t_ota"
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "five_t_ota"
+            shutil.copytree(example, source)
+            with Sampling_Controller(
+                src_path=source,
+                circuit_name="five_t_ota",
+                circuit_type="single_ended_opamp",
+                target_path=root / "history",
+                metrics=["DC_GAIN", "UGF", "PM", "POWER", "CMRR", "P_PSRR", "N_PSRR", "P_SR", "N_SR"],
+                ngspice_command=str(fake_ngspice),
+                keep_workspace=True,
+                console_log=False,
+            ) as controller:
+                self.assertEqual(controller.parameter_name_lst[0], "IBIAS_A")
+                self.assertEqual(controller.parameter_spec_lst[0].device_type, "CURRENT_SOURCE")
+                self.assertEqual(controller.parameter_spec_lst[0].control_parameter, "I")
+                self.assertEqual(controller.bounds[0], (1e-6, 50e-6, 1e-6))
+                result = controller.sample(n_points=6, n_workers=2)
+                self.assertTrue(result.success)
+                self.assertEqual(result.failed_num, 0)
+                with result.design_csv_path.open(encoding="utf-8") as file:
+                    rows = list(csv.reader(file))
+                    self.assertEqual(rows[0][0], "IBIAS_A")
+                    bias_values = [float(row[0]) for row in rows[1:]]
+                    self.assertEqual(len(bias_values), 6)
+                    self.assertTrue(all(1e-6 <= value <= 50e-6 for value in bias_values))
+
+                workspaces = list((result.target_path / ".workspaces").glob("run_*/workspace_*"))
+                self.assertEqual(len(workspaces), 2)
+                for workspace in workspaces:
+                    params = (workspace / "five_t_ota_params.sp").read_text(encoding="utf-8")
+                    self.assertIn(".param IBIAS_A=", params)
+                    rewritten_bias = float(next(line.split("=", 1)[1] for line in params.splitlines()
+                                               if line.startswith(".param IBIAS_A=")))
+                    self.assertTrue(any(np.isclose(rewritten_bias, value, rtol=1e-12, atol=0)
+                                        for value in bias_values))
+                    self.assertIn("IBIAS_SRC VDD IBIAS DC {IBIAS_A}", (workspace / "five_t_ota.sp").read_text(encoding="utf-8"))
+                    for testbench in ["ac", "stability", "power", "cmrr", "psrr", "slew"]:
+                        text = (workspace / f"tb_{testbench}.cir").read_text(encoding="utf-8")
+                        self.assertNotIn("{{IBIAS}}", text)
+                        self.assertNotIn("IBIAS_SRC", text)
+
+    def test_stale_external_bias_condition_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "demo"
+            conditions = root / "conditions"
+            self._write_circuit(source)
+            self._write_conditions(conditions)
+            path = conditions / "ac_condition.json"
+            config = json.loads(path.read_text(encoding="utf-8"))
+            config["IBIAS"] = "10u"
+            path.write_text(json.dumps(config), encoding="utf-8")
+            with Sampling_Controller(
+                src_path=source, circuit_name="demo", circuit_type="single_ended_opamp",
+                target_path=root / "history", metrics=["DC_GAIN"],
+                simulation_condition_path=conditions, console_log=False,
+            ) as controller:
+                with self.assertRaisesRegex(ValueError, "不应定义 IBIAS"):
+                    controller.sample(n_points=3, n_workers=1)
 
 
 if __name__ == "__main__":

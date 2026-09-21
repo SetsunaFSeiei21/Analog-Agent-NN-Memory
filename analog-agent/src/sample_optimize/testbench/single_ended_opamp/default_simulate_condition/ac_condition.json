@@ -5,7 +5,6 @@
     "VDD": 1.8,
     "VSS": 0.0,
     "VCM": 0.9,
-    "IBIAS": "10u",
     "CL": "1p",
     "AC_POINTS_PER_DEC": 100,
     "AC_START": 1,

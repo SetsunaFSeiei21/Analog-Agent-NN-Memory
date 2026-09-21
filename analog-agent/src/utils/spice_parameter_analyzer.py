@@ -33,6 +33,7 @@ SUPPORTED_DEVICE_TYPES = frozenset(
         "PMOS",
         "RESISTOR",
         "CAPACITOR",
+        "CURRENT_SOURCE",
     }
 )
 
@@ -46,7 +47,7 @@ class DeviceRule:
         允许的 SPICE 实例前缀，例如 ("M", "X")
 
     device_type:
-        NMOS、PMOS、RESISTOR 或 CAPACITOR
+        NMOS、PMOS、RESISTOR、CAPACITOR 或 CURRENT_SOURCE
 
     model_pattern:
         用于匹配模型名称的正则表达式
@@ -209,6 +210,9 @@ def _classify_device(
     if instance.instance_prefix == "C":
         return "CAPACITOR"
 
+    if instance.instance_prefix == "I":
+        return "CURRENT_SOURCE"
+
     # M 和 X 实例通过模型名称判断
     for device_rule in device_rules:
 
@@ -281,6 +285,9 @@ def _canonicalize_control_parameter(
             normalized_control,
             normalized_control,
         )
+
+    if device_type == "CURRENT_SOURCE":
+        return {"DC": "I", "VALUE": "I", "CURRENT": "I"}.get(normalized_control, normalized_control)
 
     return normalized_control
 
@@ -377,15 +384,16 @@ def _find_parameter_usages(
             )
 
         # ====================================================
-        # 处理原生 R/C 的位置参数形式
+        # 处理原生 R/C 和独立电流源的位置参数形式
         #
         # R1 node1 node2 {R_VALUE}
         # C1 node1 node2 {C_VALUE}
+        # I1 node+ node- DC {I_VALUE}
         # ====================================================
 
         if (
             instance.instance_prefix
-            in {"R", "C"}
+            in {"R", "C", "I"}
             and instance.positional_value
             is not None
             and expression_contains_parameter(
@@ -394,11 +402,7 @@ def _find_parameter_usages(
             )
         ):
 
-            if instance.instance_prefix == "R":
-                control_parameter = "R"
-
-            else:
-                control_parameter = "C"
+            control_parameter = {"R": "R", "C": "C", "I": "I"}[instance.instance_prefix]
 
             usages.append(
                 ParameterUsage(
@@ -515,7 +519,7 @@ def analyze_parameter_usage(
                 f"参数 {parameter_name!r} "
                 f"映射为 {circuit_parameter_name!r}，"
                 "但没有连接到任何支持的 "
-                "NMOS、PMOS、电阻或电容。"
+                "NMOS、PMOS、电阻、电容或独立电流源。"
                 "可能原因包括："
                 "参数名称不一致、"
                 "缺少 parameter_aliases、"

@@ -3,7 +3,7 @@
 *
 * Standard DUT interface:
 *
-* .subckt DUT VINP VINN VOUT VDD VSS IBIAS
+* .subckt DUT VINP VINN VOUT VDD VSS
 *
 * Metrics:
 *
@@ -72,11 +72,6 @@ VSS_P_SRC VSS_P 0 DC {{VSS}}
 VINP_P_SRC INP_P 0 DC {{VCM}}
 
 
-* Bias current
-
-IBIAS_P_SRC VDD_P IBIAS_P DC {{IBIAS}}
-
-
 * DUT
 *
 * VINP = INP_P
@@ -89,7 +84,6 @@ XDUT_P
 + OUT_P
 + VDD_P
 + VSS_P
-+ IBIAS_P
 + DUT
 
 
@@ -133,11 +127,6 @@ VSS_N_SRC VSS_N 0 DC {{VSS}} AC 1 0
 VINP_N_SRC INP_N 0 DC {{VCM}}
 
 
-* Bias current
-
-IBIAS_N_SRC VDD_N IBIAS_N DC {{IBIAS}}
-
-
 * DUT
 
 XDUT_N
@@ -146,7 +135,6 @@ XDUT_N
 + OUT_N
 + VDD_N
 + VSS_N
-+ IBIAS_N
 + DUT
 
 

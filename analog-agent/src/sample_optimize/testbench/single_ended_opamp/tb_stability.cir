@@ -2,7 +2,7 @@
 * Generic Single-Ended OpAmp Stability Testbench
 *
 * Standard DUT interface:
-* .subckt DUT VINP VINN VOUT VDD VSS IBIAS
+* .subckt DUT VINP VINN VOUT VDD VSS
 *
 * Configuration:
 *   Unity-gain negative feedback
@@ -36,13 +36,6 @@
 
 VDD_SRC VDD 0 DC {{VDD}}
 VSS_SRC VSS 0 DC {{VSS}}
-
-
-* ============================================================
-* Bias Current
-* ============================================================
-
-IBIAS_SRC VDD IBIAS DC {{IBIAS}}
 
 
 * ============================================================
@@ -82,7 +75,7 @@ LFB OUT INN 1e12
 * DUT
 * ============================================================
 
-XDUT INP INN OUT VDD VSS IBIAS DUT
+XDUT INP INN OUT VDD VSS DUT
 
 
 * ============================================================

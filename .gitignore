@@ -1,3 +1,5 @@
 __pycache__/
+sampling_database/
+tests/
 
 *.ipynb

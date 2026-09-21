@@ -5,6 +5,5 @@
     "VDD": 1.8,
     "VSS": 0.0,
     "VCM": 0.9,
-    "IBIAS": "10u",
     "OUTPUT_PATH": "power_result.txt"
 }

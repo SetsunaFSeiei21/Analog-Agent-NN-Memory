@@ -5,7 +5,6 @@
     "VDD": 1.8,
     "VSS": 0.0,
     "VCM": 0.9,
-    "IBIAS": "10u",
     "VIN_LOW": 0.7,
     "VIN_HIGH": 1.1,
     "PULSE_DELAY": "1u",

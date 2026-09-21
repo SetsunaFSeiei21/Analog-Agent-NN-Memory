@@ -237,6 +237,8 @@ class Simulator:
                 raise TypeError(f"仿真条件文件顶层必须是 JSON object：{cond_file_path}")
             if "DUT_PATH" in simulate_condition:
                 raise ValueError(f"{cond_file_path.name} 中不应定义 DUT_PATH")
+            if self.circuit_type == "single_ended_opamp" and "IBIAS" in simulate_condition:
+                raise ValueError(f"{cond_file_path.name} 中不应定义 IBIAS；偏置电流是 DUT 内的设计参数")
 
             content = tb_file_path.read_text(encoding="utf-8")
             for key, value in simulate_condition.items():

@@ -352,7 +352,7 @@ def parse_spice_instances(
     logger: Optional[logging.Logger] = None,
 ) -> List[SpiceInstance]:
     """
-    解析电路网表中的 MOS、电阻和电容实例。
+    解析电路网表中的 MOS、电阻、电容和独立电流源实例。
 
     支持实例前缀：
 
@@ -360,6 +360,7 @@ def parse_spice_instances(
     X：PDK 器件或子电路
     R：原生电阻
     C：原生电容
+    I：独立电流源（直流）
 
     本函数只负责语法解析，不判断具体器件类型。
     """
@@ -415,7 +416,7 @@ def parse_spice_instances(
 
             if (
                 instance_prefix
-                not in {"M", "X", "R", "C"}
+                not in {"M", "X", "R", "C", "I"}
             ):
                 continue
 
@@ -478,6 +479,12 @@ def parse_spice_instances(
                 positional_value = (
                     positional_tokens[3]
                 )
+
+            elif instance_prefix == "I" and len(positional_tokens) >= 4:
+                # Iname node+ node- [DC] value
+                value_index = 4 if positional_tokens[3].upper() == "DC" else 3
+                if len(positional_tokens) > value_index:
+                    positional_value = positional_tokens[value_index]
 
             instances.append(
                 SpiceInstance(

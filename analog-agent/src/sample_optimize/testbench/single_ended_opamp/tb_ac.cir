@@ -3,7 +3,7 @@
 *
 * Standard DUT interface:
 *
-* .subckt DUT VINP VINN VOUT VDD VSS IBIAS
+* .subckt DUT VINP VINN VOUT VDD VSS
 *
 * Metrics:
 *   DC Gain
@@ -43,17 +43,6 @@ VSS_SRC VSS 0 DC {{VSS}}
 
 
 * ============================================================
-* Bias Current
-*
-* Positive IBIAS flows:
-*
-* VDD -> IBIAS -> DUT
-* ============================================================
-
-IBIAS_SRC VDD IBIAS DC {{IBIAS}}
-
-
-* ============================================================
 * Differential AC Excitation
 *
 * VINP = +0.5 V AC
@@ -71,7 +60,7 @@ VINN_SRC INN 0 DC {{VCM}} AC 0.5 180
 * DUT
 * ============================================================
 
-XDUT INP INN OUT VDD VSS IBIAS DUT
+XDUT INP INN OUT VDD VSS DUT
 
 
 * ============================================================
