@@ -1,5 +1,11 @@
 __pycache__/
 sampling_database/
 tests/
+/hpc_logs/
+/smoke_test_results/
+/smoke_test_circuits/
+/sampling_inputs/
+/sampling_database/
+/Analog-Agent_scripts_only.zip
 
 *.ipynb
