@@ -233,6 +233,41 @@ class ControllerIntegrationTest(unittest.TestCase):
             self.assertIn("simulator", log_content)
             self.assertIn("history", log_content)
 
+    def test_circuit_metadata_on_move_and_history_reuse(self) -> None:
+        fake_ngspice = Path(__file__).with_name("fake_ngspice.py").resolve()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source_path = root / "source"
+            target_path = root / "history"
+            condition_path = root / "conditions"
+            self._write_circuit(source_path)
+            self._write_conditions(condition_path)
+            kwargs = dict(
+                src_path=source_path,
+                circuit_name="demo",
+                circuit_type="single_ended_opamp",
+                target_path=target_path,
+                metrics=["DC_GAIN", "UGF"],
+                simulation_condition_path=condition_path,
+                ngspice_command=str(fake_ngspice),
+                console_log=False,
+            )
+
+            with Sampling_Controller(**kwargs) as controller:
+                self.assertFalse(controller.has_history)
+            metadata_path = target_path / "demo" / "circuit_metadata.json"
+            expected = {"circuit_name": "demo", "circuit_type": "single_ended_opamp"}
+            self.assertEqual(json.loads(metadata_path.read_text(encoding="utf-8")), expected)
+
+            metadata_path.unlink()
+            with Sampling_Controller(**kwargs) as controller:
+                self.assertTrue(controller.has_history)
+            self.assertEqual(json.loads(metadata_path.read_text(encoding="utf-8")), expected)
+
+            metadata_path.write_text(json.dumps({**expected, "circuit_type": "other"}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "电路元数据与当前配置不一致"):
+                Sampling_Controller(**kwargs)
+
     def test_integrated_bias_sampling_and_all_testbenches(self) -> None:
         fake_ngspice = Path(__file__).with_name("fake_ngspice.py").resolve()
         example = ANALOG_AGENT_PATH / "examples" / "five_t_ota"

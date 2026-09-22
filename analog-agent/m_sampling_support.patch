@@ -1,0 +1,238 @@
+diff --git a/analog-agent/src/sample_optimize/parameter_ranges.json b/analog-agent/src/sample_optimize/parameter_ranges.json
+index 1158ec8..eb0a9f4 100644
+--- a/analog-agent/src/sample_optimize/parameter_ranges.json
++++ b/analog-agent/src/sample_optimize/parameter_ranges.json
+@@ -2,6 +2,7 @@
+     "control_parameter_ranges": {
+         "W": [1.0, 100.0, 0.5],
+         "L": [0.15, 10.0, 0.05],
++        "M": [1, 10, 1],
+         "R": [100.0, 100000.0, 100.0],
+         "C": [1e-15, 1e-9, 1e-15],
+         "I": [1e-6, 50e-6, 1e-6]
+@@ -9,8 +10,10 @@
+     "device_control_ranges": {
+         "NMOS.W": [1.0, 100.0, 0.5],
+         "NMOS.L": [0.15, 10.0, 0.05],
++        "NMOS.M": [1, 10, 1],
+         "PMOS.W": [1.0, 200.0, 0.5],
+         "PMOS.L": [0.15, 10.0, 0.05],
++        "PMOS.M": [1, 10, 1],
+         "RESISTOR.R": [100.0, 100000.0, 100.0],
+         "CAPACITOR.C": [1e-15, 1e-9, 1e-15],
+         "CURRENT_SOURCE.I": [1e-6, 50e-6, 1e-6]
+diff --git a/analog-agent/src/utils/spice_parameter_analyzer.py b/analog-agent/src/utils/spice_parameter_analyzer.py
+index f95da49..aee4b07 100644
+--- a/analog-agent/src/utils/spice_parameter_analyzer.py
++++ b/analog-agent/src/utils/spice_parameter_analyzer.py
+@@ -765,12 +765,12 @@ def resolve_parameter_bounds(
+                 f"{parameter_spec.control_parameter}"
+             )
+ 
+-        resolved_bounds.append(
+-            _validate_bounds(
+-                parameter_spec.parameter_name,
+-                selected_bounds,
+-            )
+-        )
++        validated_bounds = _validate_bounds(parameter_spec.parameter_name, selected_bounds)
++        if parameter_spec.control_parameter.upper() == "M":
++            lower, upper, step = validated_bounds
++            if lower < 1 or not all(value.is_integer() for value in validated_bounds):
++                raise ValueError(f"参数 {parameter_spec.parameter_name!r} 的 M 范围必须为正整数网格")
++        resolved_bounds.append(validated_bounds)
+ 
+     active_logger.debug("参数范围解析完成：count=%d", len(resolved_bounds))
+     return resolved_bounds
+diff --git a/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp/.spiceinit b/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp/.spiceinit
+new file mode 100644
+index 0000000..6bc157f
+--- /dev/null
++++ b/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp/.spiceinit
+@@ -0,0 +1 @@
++set ngbehavior=hs
+diff --git a/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp/two_stage_opamp.sp b/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp/two_stage_opamp.sp
+new file mode 100644
+index 0000000..80cbcee
+--- /dev/null
++++ b/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp/two_stage_opamp.sp
+@@ -0,0 +1,31 @@
++* SKY130 two-stage single-ended op amp; first stage is a five-transistor OTA.
++* Testbench interface: VINP VINN VOUT VDD VSS.
++* MOS W/L use micrometers under the SKY130 PDK scale=1u option.
++* M multiplies each MOS instance in parallel; W is the width of one instance.
++
++.include "two_stage_opamp_params.sp"
++
++.subckt DUT VINP VINN VOUT VDD VSS
++
++* Internal bias: reference current and the diode-connected NMOS are part of DUT.
++IBIAS_SRC VDD VBIAS DC {IBIAS_A}
++XMBIAS VBIAS VBIAS VSS VSS sky130_fd_pr__nfet_01v8 L={LBIAS} W={WBIAS} m={M_BIAS}
++
++* Stage 1: NMOS differential pair with PMOS current-mirror load.
++* VINN drives the diode-load branch so that OTA_OUT is inverted from VINP.
++XMIN1 N1 VINN NTAIL VSS sky130_fd_pr__nfet_01v8 L={LIN} W={WIN} m={M_IN}
++XMIN2 OTA_OUT VINP NTAIL VSS sky130_fd_pr__nfet_01v8 L={LIN} W={WIN} m={M_IN}
++XMPLOAD1 N1 N1 VDD VDD sky130_fd_pr__pfet_01v8 L={LLOAD} W={WLOAD} m={M_LOAD}
++XMPLOAD2 OTA_OUT N1 VDD VDD sky130_fd_pr__pfet_01v8 L={LLOAD} W={WLOAD} m={M_LOAD}
++XMTAIL NTAIL VBIAS VSS VSS sky130_fd_pr__nfet_01v8 L={LTAIL} W={WTAIL} m={M_TAIL}
++
++* Stage 2: PMOS common-source gain with an NMOS mirrored-current load.
++* It inverts OTA_OUT again, so VINP is the non-inverting input of DUT.
++XMPSTAGE2 VOUT OTA_OUT VDD VDD sky130_fd_pr__pfet_01v8 L={L2P} W={W2P} m={M_2P}
++XMNSTAGE2 VOUT VBIAS VSS VSS sky130_fd_pr__nfet_01v8 L={L2N} W={W2N} m={M_2N}
++
++* Miller compensation: series nulling resistor and ideal capacitor.
++RNULL OTA_OUT COMP {RNULL_OHM}
++CCOMP COMP VOUT {CCOMP_F}
++
++.ends DUT
+diff --git a/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp/two_stage_opamp_params.sp b/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp/two_stage_opamp_params.sp
+new file mode 100644
+index 0000000..4d3244e
+--- /dev/null
++++ b/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp/two_stage_opamp_params.sp
+@@ -0,0 +1,26 @@
++* Two-stage op amp design variables; one declaration per parameter.
++* IBIAS_A is amperes; RNULL_OHM is ohms; CCOMP_F is farads.
++* MOS W/L are numerical micrometers with the SKY130 PDK scale=1u option.
++* M is the positive integer number of parallel copies; default 1 preserves baseline.
++
++.param IBIAS_A=10e-6
++.param WBIAS=8
++.param LBIAS=0.5
++.param M_BIAS=1
++.param WIN=20
++.param LIN=0.5
++.param M_IN=1
++.param WLOAD=40
++.param LLOAD=0.5
++.param M_LOAD=1
++.param WTAIL=8
++.param LTAIL=0.5
++.param M_TAIL=1
++.param W2P=80
++.param L2P=0.5
++.param M_2P=1
++.param W2N=8
++.param L2N=0.5
++.param M_2N=1
++.param RNULL_OHM=10000
++.param CCOMP_F=1e-12
+diff --git a/analog-agent/tests/test_phase1.py b/analog-agent/tests/test_phase1.py
+index d3a4d34..6cd426a 100644
+--- a/analog-agent/tests/test_phase1.py
++++ b/analog-agent/tests/test_phase1.py
+@@ -24,7 +24,7 @@ from src.sample_optimize import (  # noqa: E402
+     Sampling_Controller,
+     Sobol_Sampler,
+ )
+-from src.utils import analyze_parameter_usage, parse_spice_instances, read_parameter_names, rewrite_parameter_values  # noqa: E402
++from src.utils import analyze_parameter_usage, parse_spice_instances, read_parameter_names, resolve_parameter_bounds, rewrite_parameter_values  # noqa: E402
+ 
+ 
+ class ParserAndSamplerTest(unittest.TestCase):
+@@ -235,14 +235,14 @@ class ControllerIntegrationTest(unittest.TestCase):
+ 
+     def test_integrated_bias_sampling_and_all_testbenches(self) -> None:
+         fake_ngspice = Path(__file__).with_name("fake_ngspice.py").resolve()
+-        example = ANALOG_AGENT_PATH / "examples" / "five_t_ota"
++        example = ANALOG_AGENT_PATH / "Sample_Optimizer_Circuit" / "5t_ota"
+         with tempfile.TemporaryDirectory() as temporary_directory:
+             root = Path(temporary_directory)
+-            source = root / "five_t_ota"
++            source = root / "5t_ota"
+             shutil.copytree(example, source)
+             with Sampling_Controller(
+                 src_path=source,
+-                circuit_name="five_t_ota",
++                circuit_name="5t_ota",
+                 circuit_type="single_ended_opamp",
+                 target_path=root / "history",
+                 metrics=["DC_GAIN", "UGF", "PM", "POWER", "CMRR", "P_PSRR", "N_PSRR", "P_SR", "N_SR"],
+@@ -267,13 +267,13 @@ class ControllerIntegrationTest(unittest.TestCase):
+                 workspaces = list((result.target_path / ".workspaces").glob("run_*/workspace_*"))
+                 self.assertEqual(len(workspaces), 2)
+                 for workspace in workspaces:
+-                    params = (workspace / "five_t_ota_params.sp").read_text(encoding="utf-8")
++                    params = (workspace / "5t_ota_params.sp").read_text(encoding="utf-8")
+                     self.assertIn(".param IBIAS_A=", params)
+                     rewritten_bias = float(next(line.split("=", 1)[1] for line in params.splitlines()
+                                                if line.startswith(".param IBIAS_A=")))
+                     self.assertTrue(any(np.isclose(rewritten_bias, value, rtol=1e-12, atol=0)
+                                         for value in bias_values))
+-                    self.assertIn("IBIAS_SRC VDD IBIAS DC {IBIAS_A}", (workspace / "five_t_ota.sp").read_text(encoding="utf-8"))
++                    self.assertIn("IBIAS_SRC VDD IBIAS DC {IBIAS_A}", (workspace / "5t_ota.sp").read_text(encoding="utf-8"))
+                     for testbench in ["ac", "stability", "power", "cmrr", "psrr", "slew"]:
+                         text = (workspace / f"tb_{testbench}.cir").read_text(encoding="utf-8")
+                         self.assertNotIn("{{IBIAS}}", text)
+@@ -299,5 +299,68 @@ class ControllerIntegrationTest(unittest.TestCase):
+                     controller.sample(n_points=3, n_workers=1)
+ 
+ 
++    def test_two_stage_opamp_samples_integer_m_and_rewrites_workspace(self) -> None:
++        example = ANALOG_AGENT_PATH / "Sample_Optimizer_Circuit" / "two_stage_opamp"
++        fake_ngspice = Path(__file__).with_name("fake_ngspice.py").resolve()
++
++        with tempfile.TemporaryDirectory() as temporary_directory:
++            root = Path(temporary_directory)
++            source = root / "two_stage_opamp"
++            shutil.copytree(example, source)
++
++            with Sampling_Controller(
++                src_path=source,
++                circuit_name="two_stage_opamp",
++                circuit_type="single_ended_opamp",
++                target_path=root / "history",
++                metrics=["DC_GAIN"],
++                ngspice_command=str(fake_ngspice),
++                keep_workspace=True,
++                console_log=False,
++            ) as controller:
++                m_specs = [spec for spec in controller.parameter_spec_lst if spec.control_parameter == "M"]
++                self.assertEqual(len(m_specs), 6)
++                for spec in m_specs:
++                    self.assertIn(spec.device_type, {"NMOS", "PMOS"})
++                    self.assertEqual(controller.bounds[controller.parameter_name_lst.index(spec.parameter_name)],
++                                     (1.0, 10.0, 1.0))
++
++                with self.assertRaisesRegex(ValueError, "正整数网格"):
++                    resolve_parameter_bounds(
++                        controller.parameter_spec_lst,
++                        controller.control_parameter_ranges,
++                        controller.device_control_ranges,
++                        {"M_IN": (1, 10, 0.5)},
++                    )
++
++                result = controller.sample(n_points=6, n_workers=2)
++                self.assertTrue(result.success)
++                self.assertEqual(result.failed_num, 0)
++
++                with result.design_csv_path.open(encoding="utf-8", newline="") as file:
++                    rows = list(csv.DictReader(file))
++                self.assertEqual(len(rows), 6)
++                for row in rows:
++                    for spec in m_specs:
++                        value = float(row[spec.parameter_name])
++                        self.assertTrue(value.is_integer())
++                        self.assertLessEqual(1, value)
++                        self.assertLessEqual(value, 10)
++
++                workspaces = list((result.target_path / ".workspaces").glob("run_*/workspace_*"))
++                self.assertEqual(len(workspaces), 2)
++                for workspace in workspaces:
++                    params = workspace / "two_stage_opamp_params.sp"
++                    self.assertEqual(read_parameter_names(params), controller.parameter_name_lst)
++                    declarations = {
++                        line.split("=", 1)[0].removeprefix(".param "): float(line.split("=", 1)[1])
++                        for line in params.read_text(encoding="utf-8").splitlines()
++                        if line.startswith(".param ")
++                    }
++                    for spec in m_specs:
++                        self.assertTrue(declarations[spec.parameter_name].is_integer())
++                    self.assertIn("m={M_IN}", (workspace / "two_stage_opamp.sp").read_text(encoding="utf-8"))
++
++
+ if __name__ == "__main__":
+     unittest.main()

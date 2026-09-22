@@ -274,6 +274,7 @@ class Sampling_Controller:
                 metric_names=self.simulator.metrics,
                 logger=get_child_logger(self.logger, "history"),
             )
+            self._ensure_circuit_metadata()
             self.logger.info(
                 "采样控制器初始化完成：parameters=%d, metrics=%s, seed=%s",
                 len(self.parameter_name_lst),
@@ -287,6 +288,24 @@ class Sampling_Controller:
     def _set_circuit_paths(self) -> None:
         self.circuit_path = self.src_path / f"{self.circuit_name}.sp"
         self.parameter_path = self.src_path / f"{self.circuit_name}_params.sp"
+
+    def _ensure_circuit_metadata(self) -> None:
+        metadata_path = self.src_path / "circuit_metadata.json"
+        expected = {"circuit_name": self.circuit_name, "circuit_type": self.circuit_type}
+        if metadata_path.exists():
+            try:
+                actual = json.loads(metadata_path.read_text(encoding="utf-8"))
+            except (UnicodeError, json.JSONDecodeError) as exc:
+                raise ValueError(f"电路元数据不是合法 JSON：{metadata_path}") from exc
+            if not isinstance(actual, dict) or any(actual.get(key) != value for key, value in expected.items()):
+                raise ValueError(f"电路元数据与当前配置不一致：path={metadata_path}, expected={expected}, actual={actual}")
+            self.logger.debug("已核对电路元数据：%s", metadata_path)
+            return
+
+        with metadata_path.open("x", encoding="utf-8") as file:
+            json.dump(expected, file, ensure_ascii=False, indent=2)
+            file.write("\n")
+        self.logger.info("电路元数据已写入：%s", metadata_path)
 
     def _validate_circuit_directory(self, path: Path, label: str) -> None:
         if not path.is_dir():

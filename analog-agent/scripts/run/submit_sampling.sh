@@ -5,9 +5,9 @@ set -euo pipefail
 SOURCE_DIR="Sample_Optimizer_Circuit/5t_ota"
 CIRCUIT_NAME="5t_ota"
 CIRCUIT_TYPE="single_ended_opamp"
-N_POINTS=300
+N_POINTS=20000
 N_WORKERS=8
-METRICS=(DC_GAIN UGF PM POWER)
+METRICS=(DC_GAIN UGF PM CMRR P_PSRR N_PSRR P_SR N_SR POWER)
 TARGET_ROOT="sampling_database"
 SEED=42
 CONDA_ENV="newbase"

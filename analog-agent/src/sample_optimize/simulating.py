@@ -82,6 +82,7 @@ class Simulator:
         ".git",
         ".workspaces",
         "__pycache__",
+        "circuit_metadata.json",
         "logs",
         "sampling_history.sqlite3",
         "sampling_history.sqlite3-shm",

@@ -1,5 +1,5 @@
 {
-    "PDK_PATH": "/public/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice",
+    "PDK_PATH": "/share/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice",
     "CORNER": "tt",
     "TEMP": 27,
     "VDD": 1.8,
