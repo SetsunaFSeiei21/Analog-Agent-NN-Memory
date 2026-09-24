@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import os
 import shutil
 import sqlite3
 import sys
@@ -10,6 +11,7 @@ import tempfile
 import unittest
 
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -84,10 +86,10 @@ class ParserAndSamplerTest(unittest.TestCase):
         specs = analyze_parameter_usage(example / "two_stage_opamp_otaf.sp", names)
         m_specs = [spec for spec in specs if spec.control_parameter == "M"]
         self.assertEqual({spec.parameter_name for spec in m_specs},
-                         {"M_BIAS", "M_IN", "M_LOAD", "M_TAIL", "M_2P", "M_2N"})
-        self.assertEqual(resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}), [(1.0, 10.0, 1.0)] * 6)
+                         {"M_TAIL1", "M_TAIL2"})
+        self.assertEqual(resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}), [(1.0, 10.0, 1.0)] * 2)
         with self.assertRaisesRegex(ValueError, "正整数网格"):
-            resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}, parameter_overrides={"M_IN": (1, 10, 0.5)})
+            resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}, parameter_overrides={"M_TAIL1": (1, 10, 0.5)})
 
     def test_samplers_return_exact_count_and_legal_grid(self) -> None:
         bounds = [(0.0, 1.0, 0.35), (1.0, 2.0, 0.25)]
@@ -350,7 +352,7 @@ class ControllerIntegrationTest(unittest.TestCase):
             ) as controller:
                 m_indices = [index for index, spec in enumerate(controller.parameter_spec_lst)
                              if spec.control_parameter == "M"]
-                self.assertEqual(len(m_indices), 6)
+                self.assertEqual(len(m_indices), 2)
                 self.assertTrue(all(controller.bounds[index] == (1.0, 10.0, 1.0) for index in m_indices))
                 result = controller.sample(n_points=6, n_workers=2, continue_on_error=False)
                 self.assertTrue(result.success)
@@ -372,7 +374,63 @@ class ControllerIntegrationTest(unittest.TestCase):
                         value = next(float(line.split("=", 1)[1]) for line in params.splitlines()
                                      if line.startswith(f".param {name}="))
                         self.assertTrue(value.is_integer() and 1 <= value <= 10)
-                    self.assertIn("m={M_IN}", (workspace / "two_stage_opamp_otaf.sp").read_text(encoding="utf-8"))
+                    circuit = (workspace / "two_stage_opamp_otaf.sp").read_text(encoding="utf-8")
+                    self.assertIn("m={M_TAIL1}", circuit)
+                    self.assertIn("m={M_TAIL2}", circuit)
+
+    def test_partial_metrics_preserve_available_values_and_store_missing_as_nan(self) -> None:
+        fake_ngspice = Path(__file__).with_name("fake_ngspice.py").resolve()
+        example = ANALOG_AGENT_PATH / "Sample_Optimizer_Circuit" / "5t_ota"
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "5t_ota"
+            shutil.copytree(example, source)
+            with patch.dict(os.environ, {"ANALOG_FAKE_PARTIAL_METRICS": "1"}):
+                with Sampling_Controller(
+                    src_path=source,
+                    circuit_name="5t_ota",
+                    circuit_type="single_ended_opamp",
+                    target_path=root / "history",
+                    metrics=["DC_GAIN", "UGF", "PM", "CMRR", "P_PSRR", "N_PSRR", "P_SR", "N_SR", "POWER"],
+                    ngspice_command=str(fake_ngspice),
+                    console_log=False,
+                ) as controller:
+                    result = controller.sample(n_points=3, n_workers=1, continue_on_error=True)
+
+            self.assertFalse(result.success)
+            self.assertEqual(result.failed_num, 3)
+            with result.metrics_csv_path.open(encoding="utf-8") as file:
+                rows = list(csv.DictReader(file))
+            self.assertEqual(len(rows), 3)
+            for row in rows:
+                self.assertAlmostEqual(float(row["DC_Gain_dB"]), -59.62694)
+                self.assertTrue(np.isnan(float(row["UGF_Hz"])))
+                self.assertEqual(float(row["Phase_Margin_deg"]), 68.0)
+                self.assertEqual(float(row["CMRR_dB"]), 92.0)
+                self.assertEqual(float(row["PSRR_Plus_dB"]), 80.0)
+                self.assertEqual(float(row["PSRR_Minus_dB"]), 76.0)
+                self.assertEqual(float(row["Slew_Rise_V_us"]), 12.0)
+                self.assertEqual(float(row["Slew_Fall_V_us"]), 10.0)
+                self.assertEqual(float(row["Power_Quiescent_uW"]), 150.0)
+
+            with sqlite3.connect(result.database_path) as connection:
+                database_rows = connection.execute(
+                    "SELECT metric_values_json, success, error_type FROM samples ORDER BY sample_index"
+                ).fetchall()
+            self.assertEqual(len(database_rows), 3)
+            for metric_values_json, success, error_type in database_rows:
+                metric_values = json.loads(metric_values_json)
+                self.assertAlmostEqual(metric_values[0], -59.62694)
+                self.assertIsNone(metric_values[1])
+                self.assertEqual(success, 0)
+                self.assertEqual(error_type, "PartialSimulationFailure")
+
+            failure_records = [
+                json.loads(line)
+                for line in (result.target_path / "simulation_failures.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(len(failure_records), 3)
+            self.assertTrue(all("UGF" in record["error"] for record in failure_records))
 
     def test_stale_external_bias_condition_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

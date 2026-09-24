@@ -72,6 +72,8 @@ circuit_name/
 - `sampling_history.sqlite3` 是唯一可信数据源，使用事务保存运行记录和采样结果；
 - `circuit_metadata.json` 记录 `circuit_name` 和 `circuit_type`；首次采样时创建，已有历史目录缺失时自动补建，配置不一致时报错；
 - 两个 CSV 由 SQLite 原子导出，用于兼容训练代码；
+- 启用 `continue_on_error` 后按指标保存部分结果：已成功提取的有限值会保留，仅缺失或失败的指标写为 `NaN`；
+- 含有任意 `NaN` 的设计点仍会保存，但标记为 `success=0`，失败摘要写入 `simulation_failures.jsonl`；
 - 已存在的旧双 CSV 会在首次运行时自动迁移；
 - 相同 design point 会被跳过，Controller 会继续补点；
 - 同一电路历史库的参数列和指标列必须保持一致。

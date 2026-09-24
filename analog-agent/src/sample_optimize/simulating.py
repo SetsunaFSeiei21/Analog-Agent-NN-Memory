@@ -287,8 +287,24 @@ class Simulator:
     def _log_excerpt(content: str, limit: int = 10000) -> str:
         return content if len(content) <= limit else "...<truncated>...\n" + content[-limit:]
 
-    def _run_testbench(self, sub_workspace: Path) -> Dict[str, Path]:
+    @staticmethod
+    def _nonrecoverable_log_errors(log_content: str) -> Tuple[str, ...]:
+        fatal_lines = [line.strip() for line in re.findall(r"(?im)^\s*fatal error.*$", log_content)]
+        error_lines = [line.strip() for line in re.findall(r"(?im)^\s*error:\s*.*$", log_content)]
+        nonrecoverable = [
+            line
+            for line in error_lines
+            if not re.match(r"(?i)^error:\s*(?:measure\b|rhs\b)", line)
+        ]
+        return tuple(fatal_lines + nonrecoverable)
+
+    def _run_testbench(
+        self,
+        sub_workspace: Path,
+        continue_on_error: bool,
+    ) -> Tuple[Dict[str, Path], List[Dict[str, Any]]]:
         log_paths: Dict[str, Path] = {}
+        failures: List[Dict[str, Any]] = []
 
         for testbench_name in self._get_testbench_name_lst():
             testbench_path = sub_workspace / f"tb_{testbench_name}.cir"
@@ -306,77 +322,113 @@ class Simulator:
             ]
 
             try:
-                process = subprocess.run(
-                    command,
-                    cwd=sub_workspace,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    timeout=self.timeout_seconds,
-                    check=False,
-                )
-            except FileNotFoundError as exc:
-                raise FileNotFoundError(
-                    f"未找到 ngspice 命令 {self.ngspice_command!r}，请确认已安装并加入 PATH"
-                ) from exc
-            except subprocess.TimeoutExpired as exc:
-                output = exc.stdout or ""
-                if isinstance(output, bytes):
-                    output = output.decode("utf-8", errors="replace")
-                raise SimulationRunError(
-                    f"ngspice 仿真超时：testbench={testbench_path.name}, "
-                    f"timeout={self.timeout_seconds}s\n{self._log_excerpt(output)}"
-                ) from exc
+                try:
+                    process = subprocess.run(
+                        command,
+                        cwd=sub_workspace,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        timeout=self.timeout_seconds,
+                        check=False,
+                    )
+                except FileNotFoundError as exc:
+                    raise FileNotFoundError(
+                        f"未找到 ngspice 命令 {self.ngspice_command!r}，请确认已安装并加入 PATH"
+                    ) from exc
+                except subprocess.TimeoutExpired as exc:
+                    output = exc.stdout or ""
+                    if isinstance(output, bytes):
+                        output = output.decode("utf-8", errors="replace")
+                    raise SimulationRunError(
+                        f"ngspice 仿真超时：testbench={testbench_path.name}, "
+                        f"timeout={self.timeout_seconds}s\n{self._log_excerpt(output)}"
+                    ) from exc
 
-            log_content = (
-                log_path.read_text(encoding="utf-8", errors="replace")
-                if log_path.exists()
-                else process.stdout or ""
-            )
-            excerpt = self._log_excerpt(log_content)
-            if process.returncode != 0:
-                raise SimulationRunError(
-                    f"ngspice 仿真失败：testbench={testbench_path.name}, "
-                    f"workspace={sub_workspace}, returncode={process.returncode}\n{excerpt}"
+                log_content = (
+                    log_path.read_text(encoding="utf-8", errors="replace")
+                    if log_path.exists()
+                    else process.stdout or ""
                 )
-            if re.search(r"(?im)^\s*(fatal error|error:)", log_content):
-                raise SimulationRunError(
-                    f"ngspice log 中检测到错误：testbench={testbench_path.name}, "
-                    f"workspace={sub_workspace}\n{excerpt}"
+                excerpt = self._log_excerpt(log_content)
+                if process.returncode != 0:
+                    raise SimulationRunError(
+                        f"ngspice 仿真失败：testbench={testbench_path.name}, "
+                        f"workspace={sub_workspace}, returncode={process.returncode}\n{excerpt}"
+                    )
+                nonrecoverable_errors = self._nonrecoverable_log_errors(log_content)
+                if nonrecoverable_errors:
+                    raise SimulationRunError(
+                        f"ngspice log 中检测到不可恢复错误：testbench={testbench_path.name}, "
+                        f"workspace={sub_workspace}, errors={list(nonrecoverable_errors)}\n{excerpt}"
+                    )
+                if not log_path.is_file():
+                    raise SimulationRunError(f"ngspice 未生成 log 文件：{log_path}")
+                log_paths[testbench_name] = log_path
+            except SimulationRunError as exc:
+                if not continue_on_error:
+                    raise
+                failures.append(
+                    {
+                        "testbench": testbench_name,
+                        "metrics": [
+                            metric
+                            for metric in self.raw_metrics
+                            if SINGLE_OPAMP_METRIC2TESTBENCH_NAME[metric] == testbench_name
+                        ],
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
                 )
-            if not log_path.is_file():
-                raise SimulationRunError(f"ngspice 未生成 log 文件：{log_path}")
-            log_paths[testbench_name] = log_path
 
-        return log_paths
+        return log_paths, failures
 
-    def _read_simulation_result(self, log_path_dict: Dict[str, Path]) -> np.ndarray:
+    def _read_simulation_result(
+        self,
+        log_path_dict: Dict[str, Path],
+        continue_on_error: bool,
+    ) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
         results: List[float] = []
+        failures: List[Dict[str, Any]] = []
         log_contents: Dict[str, str] = {}
         number_pattern = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
 
         for raw_metric in self.raw_metrics:
             testbench_name = SINGLE_OPAMP_METRIC2TESTBENCH_NAME[raw_metric]
             result_name = SINGLE_OPAMP_METRIC2RESULT_NAME[raw_metric]
-            if testbench_name not in log_path_dict:
-                raise SimulationResultError(f"未找到 {testbench_name} 对应的 log 文件")
-            if testbench_name not in log_contents:
-                log_contents[testbench_name] = log_path_dict[testbench_name].read_text(
-                    encoding="utf-8", errors="replace"
-                )
+            try:
+                if testbench_name not in log_path_dict:
+                    raise SimulationResultError(f"未找到 {testbench_name} 对应的 log 文件")
+                if testbench_name not in log_contents:
+                    log_contents[testbench_name] = log_path_dict[testbench_name].read_text(
+                        encoding="utf-8", errors="replace"
+                    )
 
-            pattern = rf"(?im)^\s*{re.escape(result_name)}\s*=\s*({number_pattern})"
-            matches = re.findall(pattern, log_contents[testbench_name])
-            if not matches:
-                raise SimulationResultError(
-                    f"无法从 {testbench_name}.log 中读取指标 {raw_metric}，期望变量 {result_name}"
+                pattern = rf"(?im)^\s*{re.escape(result_name)}\s*=\s*({number_pattern})"
+                matches = re.findall(pattern, log_contents[testbench_name])
+                if not matches:
+                    raise SimulationResultError(
+                        f"无法从 {testbench_name}.log 中读取指标 {raw_metric}，期望变量 {result_name}"
+                    )
+                value = float(matches[-1])
+                if not np.isfinite(value):
+                    raise SimulationResultError(f"指标 {raw_metric} 不是有限数值：{value}")
+            except SimulationResultError as exc:
+                if not continue_on_error:
+                    raise
+                value = float("nan")
+                failures.append(
+                    {
+                        "metric": raw_metric,
+                        "testbench": testbench_name,
+                        "result_name": result_name,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
                 )
-            value = float(matches[-1])
-            if not np.isfinite(value):
-                raise SimulationResultError(f"指标 {raw_metric} 不是有限数值：{value}")
             results.append(value)
 
-        return np.asarray(results, dtype=float)
+        return np.asarray(results, dtype=float), failures
 
     def _simulate_chunk(
         self,
@@ -390,19 +442,34 @@ class Simulator:
 
         for sample_index, design_parameters in zip(sample_index_chunk, chunk):
             self._rewrite_parameters(sub_workspace, design_parameters)
-            try:
-                log_paths = self._run_testbench(sub_workspace)
-                simulation_result = self._read_simulation_result(log_paths)
-            except (SimulationRunError, SimulationResultError) as exc:
-                if not continue_on_error:
-                    raise
-                simulation_result = np.full(len(self.raw_metrics), np.nan, dtype=float)
+            log_paths, testbench_failures = self._run_testbench(sub_workspace, continue_on_error)
+            simulation_result, metric_failures = self._read_simulation_result(
+                log_paths,
+                continue_on_error,
+            )
+            point_failures = testbench_failures + metric_failures
+            if point_failures:
+                failed_metrics = sorted(
+                    {
+                        metric
+                        for failure in point_failures
+                        for metric in failure.get("metrics", [failure.get("metric")])
+                        if metric is not None
+                    }
+                )
+                error_summary = "; ".join(
+                    f"{failure.get('metric', failure.get('metrics'))}"
+                    f"@{failure['testbench']}: {failure['error']}"
+                    for failure in point_failures
+                )
                 failures.append(
                     {
                         "sample_index": int(sample_index),
                         "design_parameters": design_parameters.tolist(),
-                        "error_type": type(exc).__name__,
-                        "error": str(exc),
+                        "error_type": "PartialSimulationFailure",
+                        "failed_metrics": failed_metrics,
+                        "details": point_failures,
+                        "error": f"以下指标未能获得有效数值：{failed_metrics}; {error_summary}",
                     }
                 )
             results.append(simulation_result)

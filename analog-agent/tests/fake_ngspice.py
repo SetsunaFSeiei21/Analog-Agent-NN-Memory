@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 from pathlib import Path
 import sys
 
@@ -16,6 +17,11 @@ def main() -> int:
         "tb_slew": "slew_rise_v_us = 12\nslew_fall_v_us = 10\n",
         "tb_power": "power_uw = 150\n",
     }
+    if os.environ.get("ANALOG_FAKE_PARTIAL_METRICS") == "1" and testbench_name == "tb_ac":
+        values[testbench_name] = (
+            "dc_gain_db = -5.962694e+01\n"
+            "Error: measure gbw_hz when(WHEN) : out of interval\n"
+        )
     Path(log_name).write_text(values[testbench_name], encoding="utf-8")
     return 0
 
