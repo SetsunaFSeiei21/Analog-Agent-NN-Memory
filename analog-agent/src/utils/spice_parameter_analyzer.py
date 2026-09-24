@@ -765,12 +765,12 @@ def resolve_parameter_bounds(
                 f"{parameter_spec.control_parameter}"
             )
 
-        resolved_bounds.append(
-            _validate_bounds(
-                parameter_spec.parameter_name,
-                selected_bounds,
-            )
-        )
+        validated_bounds = _validate_bounds(parameter_spec.parameter_name, selected_bounds)
+        if parameter_spec.control_parameter.upper() == "M":
+            lower_bound, _, _ = validated_bounds
+            if lower_bound < 1 or not all(value.is_integer() for value in validated_bounds):
+                raise ValueError(f"参数 {parameter_spec.parameter_name!r} 的 M 范围必须为正整数网格")
+        resolved_bounds.append(validated_bounds)
 
     active_logger.debug("参数范围解析完成：count=%d", len(resolved_bounds))
     return resolved_bounds

@@ -24,7 +24,7 @@ from src.sample_optimize import (  # noqa: E402
     Sampling_Controller,
     Sobol_Sampler,
 )
-from src.utils import analyze_parameter_usage, parse_spice_instances, read_parameter_names, rewrite_parameter_values  # noqa: E402
+from src.utils import analyze_parameter_usage, parse_spice_instances, read_parameter_names, resolve_parameter_bounds, rewrite_parameter_values  # noqa: E402
 
 
 class ParserAndSamplerTest(unittest.TestCase):
@@ -71,6 +71,23 @@ class ParserAndSamplerTest(unittest.TestCase):
             specs = analyze_parameter_usage(path, ["IBIAS_A", "IREF_A"])
             self.assertEqual([(spec.device_type, spec.control_parameter) for spec in specs],
                              [("CURRENT_SOURCE", "I"), ("CURRENT_SOURCE", "I")])
+
+    def test_missing_m_does_not_create_a_sampling_variable(self) -> None:
+        example = ANALOG_AGENT_PATH / "Sample_Optimizer_Circuit" / "5t_ota"
+        names = read_parameter_names(example / "5t_ota_params.sp")
+        specs = analyze_parameter_usage(example / "5t_ota.sp", names)
+        self.assertFalse(any(spec.control_parameter == "M" for spec in specs))
+
+    def test_m_bounds_must_use_positive_integer_grid_even_for_overrides(self) -> None:
+        example = ANALOG_AGENT_PATH / "Sample_Optimizer_Circuit" / "two_stage_opamp_otaf"
+        names = read_parameter_names(example / "two_stage_opamp_otaf_params.sp")
+        specs = analyze_parameter_usage(example / "two_stage_opamp_otaf.sp", names)
+        m_specs = [spec for spec in specs if spec.control_parameter == "M"]
+        self.assertEqual({spec.parameter_name for spec in m_specs},
+                         {"M_BIAS", "M_IN", "M_LOAD", "M_TAIL", "M_2P", "M_2N"})
+        self.assertEqual(resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}), [(1.0, 10.0, 1.0)] * 6)
+        with self.assertRaisesRegex(ValueError, "正整数网格"):
+            resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}, parameter_overrides={"M_IN": (1, 10, 0.5)})
 
     def test_samplers_return_exact_count_and_legal_grid(self) -> None:
         bounds = [(0.0, 1.0, 0.35), (1.0, 2.0, 0.25)]
@@ -270,14 +287,14 @@ class ControllerIntegrationTest(unittest.TestCase):
 
     def test_integrated_bias_sampling_and_all_testbenches(self) -> None:
         fake_ngspice = Path(__file__).with_name("fake_ngspice.py").resolve()
-        example = ANALOG_AGENT_PATH / "examples" / "five_t_ota"
+        example = ANALOG_AGENT_PATH / "Sample_Optimizer_Circuit" / "5t_ota"
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            source = root / "five_t_ota"
+            source = root / "5t_ota"
             shutil.copytree(example, source)
             with Sampling_Controller(
                 src_path=source,
-                circuit_name="five_t_ota",
+                circuit_name="5t_ota",
                 circuit_type="single_ended_opamp",
                 target_path=root / "history",
                 metrics=["DC_GAIN", "UGF", "PM", "POWER", "CMRR", "P_PSRR", "N_PSRR", "P_SR", "N_SR"],
@@ -288,7 +305,7 @@ class ControllerIntegrationTest(unittest.TestCase):
                 self.assertEqual(controller.parameter_name_lst[0], "IBIAS_A")
                 self.assertEqual(controller.parameter_spec_lst[0].device_type, "CURRENT_SOURCE")
                 self.assertEqual(controller.parameter_spec_lst[0].control_parameter, "I")
-                self.assertEqual(controller.bounds[0], (1e-6, 50e-6, 1e-6))
+                self.assertEqual(controller.bounds[0], (1e-7, 20e-6, 1e-7))
                 result = controller.sample(n_points=6, n_workers=2)
                 self.assertTrue(result.success)
                 self.assertEqual(result.failed_num, 0)
@@ -297,22 +314,65 @@ class ControllerIntegrationTest(unittest.TestCase):
                     self.assertEqual(rows[0][0], "IBIAS_A")
                     bias_values = [float(row[0]) for row in rows[1:]]
                     self.assertEqual(len(bias_values), 6)
-                    self.assertTrue(all(1e-6 <= value <= 50e-6 for value in bias_values))
+                    self.assertTrue(all(1e-7 <= value <= 20e-6 for value in bias_values))
 
                 workspaces = list((result.target_path / ".workspaces").glob("run_*/workspace_*"))
                 self.assertEqual(len(workspaces), 2)
                 for workspace in workspaces:
-                    params = (workspace / "five_t_ota_params.sp").read_text(encoding="utf-8")
+                    params = (workspace / "5t_ota_params.sp").read_text(encoding="utf-8")
                     self.assertIn(".param IBIAS_A=", params)
                     rewritten_bias = float(next(line.split("=", 1)[1] for line in params.splitlines()
                                                if line.startswith(".param IBIAS_A=")))
                     self.assertTrue(any(np.isclose(rewritten_bias, value, rtol=1e-12, atol=0)
                                         for value in bias_values))
-                    self.assertIn("IBIAS_SRC VDD IBIAS DC {IBIAS_A}", (workspace / "five_t_ota.sp").read_text(encoding="utf-8"))
+                    self.assertIn("IBIAS_SRC VDD IBIAS DC {IBIAS_A}", (workspace / "5t_ota.sp").read_text(encoding="utf-8"))
                     for testbench in ["ac", "stability", "power", "cmrr", "psrr", "slew"]:
                         text = (workspace / f"tb_{testbench}.cir").read_text(encoding="utf-8")
                         self.assertNotIn("{{IBIAS}}", text)
                         self.assertNotIn("IBIAS_SRC", text)
+
+    def test_two_stage_opamp_otaf_samples_integer_m_and_rewrites_workspace(self) -> None:
+        fake_ngspice = Path(__file__).with_name("fake_ngspice.py").resolve()
+        example = ANALOG_AGENT_PATH / "Sample_Optimizer_Circuit" / "two_stage_opamp_otaf"
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "two_stage_opamp_otaf"
+            shutil.copytree(example, source)
+            with Sampling_Controller(
+                src_path=source,
+                circuit_name="two_stage_opamp_otaf",
+                circuit_type="single_ended_opamp",
+                target_path=root / "history",
+                metrics=["DC_GAIN", "UGF", "PM", "POWER"],
+                ngspice_command=str(fake_ngspice),
+                keep_workspace=True,
+                console_log=False,
+            ) as controller:
+                m_indices = [index for index, spec in enumerate(controller.parameter_spec_lst)
+                             if spec.control_parameter == "M"]
+                self.assertEqual(len(m_indices), 6)
+                self.assertTrue(all(controller.bounds[index] == (1.0, 10.0, 1.0) for index in m_indices))
+                result = controller.sample(n_points=6, n_workers=2, continue_on_error=False)
+                self.assertTrue(result.success)
+                with result.design_csv_path.open(encoding="utf-8") as file:
+                    rows = list(csv.DictReader(file))
+                self.assertEqual(len(rows), 6)
+                for row in rows:
+                    for index in m_indices:
+                        m_value = float(row[controller.parameter_name_lst[index]])
+                        self.assertTrue(m_value.is_integer() and 1 <= m_value <= 10)
+
+                workspaces = list((result.target_path / ".workspaces").glob("run_*/workspace_*"))
+                self.assertEqual(len(workspaces), 2)
+                for workspace in workspaces:
+                    params_path = workspace / "two_stage_opamp_otaf_params.sp"
+                    params = params_path.read_text(encoding="utf-8")
+                    for index in m_indices:
+                        name = controller.parameter_name_lst[index]
+                        value = next(float(line.split("=", 1)[1]) for line in params.splitlines()
+                                     if line.startswith(f".param {name}="))
+                        self.assertTrue(value.is_integer() and 1 <= value <= 10)
+                    self.assertIn("m={M_IN}", (workspace / "two_stage_opamp_otaf.sp").read_text(encoding="utf-8"))
 
     def test_stale_external_bias_condition_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

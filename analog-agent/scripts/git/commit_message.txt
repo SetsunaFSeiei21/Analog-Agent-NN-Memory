@@ -1,1 +1,1 @@
-Add Slurm sampling scripts for Analog-Agent
+将设计参数m的读取加入项目.
