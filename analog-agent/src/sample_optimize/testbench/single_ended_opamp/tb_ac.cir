@@ -7,8 +7,9 @@
 *
 * Metrics:
 *   DC Gain
-*   GBW
-*   Phase Margin
+*   UGF
+*
+* Phase Margin is measured only by tb_stability.cir.
 * ============================================================
 
 
@@ -48,7 +49,9 @@ VSS_SRC VSS 0 DC {{VSS}}
 * VINP = +0.5 V AC
 * VINN = -0.5 V AC
 *
-* Differential AC input magnitude = 1 V
+* Differential AC input:
+*
+* VINP - VINN = 1 V
 * ============================================================
 
 VINP_SRC INP 0 DC {{VCM}} AC 0.5 0
@@ -91,12 +94,16 @@ option numdgt=15
 
 
 * ============================================================
-* Derived Vectors
+* Open-Loop Gain
 * ============================================================
 
-let gain_db = db(v(OUT))
+let differential_input = v(INP) - v(INN)
 
-let phase_deg = 180/pi*phase(v(OUT))
+let open_loop_gain = v(OUT) / differential_input
+
+let gain_db = db(open_loop_gain)
+
+let phase_deg = 180/pi*cph(open_loop_gain)
 
 
 * ============================================================
@@ -107,24 +114,14 @@ meas ac dc_gain_db FIND gain_db AT={{GAIN_MEASURE_FREQ}}
 
 
 * ============================================================
-* GBW
+* Unity-Gain Frequency
+*
+* The measurement fails when the low-frequency gain is below
+* 0 dB or when no falling 0-dB crossing exists. Such a design
+* point is treated as an invalid amplifier sizing.
 * ============================================================
 
 meas ac gbw_hz WHEN gain_db=0 FALL=1
-
-
-* ============================================================
-* Phase at GBW
-* ============================================================
-
-meas ac phase_at_gbw_deg FIND phase_deg WHEN gain_db=0 FALL=1
-
-
-* ============================================================
-* Phase Margin
-* ============================================================
-
-let phase_margin_deg = 180 + phase_at_gbw_deg
 
 
 * ============================================================
@@ -136,13 +133,15 @@ echo AC PERFORMANCE
 echo ========================================
 
 print dc_gain_db
+
 print gbw_hz
-print phase_at_gbw_deg
-print phase_margin_deg
 
 
 * ============================================================
-* Save Full Response
+* Save Full AC Response
+*
+* phase_deg is retained only for waveform inspection.
+* It is not used as the final Phase Margin metric.
 * ============================================================
 
 wrdata "{{OUTPUT_PATH}}" gain_db phase_deg

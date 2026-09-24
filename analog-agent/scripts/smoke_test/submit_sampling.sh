@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # 只修改这里：烟测参数和集群配置。
-CIRCUIT_NAME="5t_ota"
+CIRCUIT_NAME="two_stage_opamp_otaf"
 CIRCUIT_TYPE="single_ended_opamp"
-SOURCE_DIR="Sample_Optimizer_Circuit/5t_ota"
+SOURCE_DIR="Sample_Optimizer_Circuit/two_stage_opamp_otaf"
 N_POINTS=6
 N_WORKERS=8
 METRICS=(DC_GAIN UGF PM CMRR P_PSRR N_PSRR P_SR N_SR POWER)
@@ -34,9 +34,9 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$PROJECT_ROOT"
 export ANALOG_AGENT_ROOT="$PROJECT_ROOT"
 export ANALOG_INPUT_ROOT="$PROJECT_ROOT/smoke_test_circuits"
-export ANALOG_SMOKE_TEST=1
+export ANALOG_SMOKE_TEST=0
 export ANALOG_KEEP_WORKSPACE=1
-export ANALOG_CONTINUE_ON_ERROR=0
+export ANALOG_CONTINUE_ON_ERROR=1
 export ANALOG_CONDA_ENV="$CONDA_ENV"
 export ANALOG_CONDA_HOME="$CONDA_HOME"
 export ANALOG_NGSPICE_COMMAND="$NGSPICE_COMMAND"
