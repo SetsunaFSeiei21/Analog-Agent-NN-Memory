@@ -29,6 +29,7 @@ DeviceControlKey = Tuple[str, str]
 
 SUPPORTED_DEVICE_TYPES = frozenset(
     {
+        "MOS",
         "NMOS",
         "PMOS",
         "RESISTOR",
@@ -444,10 +445,13 @@ def analyze_parameter_usage(
     """
     分析所有设计变量控制的器件类型和控制参数。
 
-    一个参数可以在多个器件实例中使用，但必须保证所有位置的：
+    一个参数可以在多个器件实例中使用，但通常必须保证所有位置的：
 
     1. device_type 相同；
     2. control_parameter 相同。
+
+    唯一例外是 MOS 的 M：同一个乘数参数可以同时控制 NMOS.M 和
+    PMOS.M，此时统一记录为 MOS.M。这样可以表达成比例联动的器件组。
 
     例如：
 
@@ -536,8 +540,15 @@ def analyze_parameter_usage(
             for usage in usages
         }
 
-        # 同一参数的所有使用位置必须具有相同语义
-        if len(meanings) != 1:
+        device_types = {usage.device_type for usage in usages}
+        control_parameters = {usage.control_parameter for usage in usages}
+        shared_mos_m = (
+            control_parameters == {"M"}
+            and device_types.issubset({"NMOS", "PMOS"})
+        )
+
+        # 除共享 MOS 乘数外，同一参数的所有使用位置必须具有相同语义。
+        if len(meanings) != 1 and not shared_mos_m:
 
             usage_details = "; ".join(
 
@@ -556,10 +567,10 @@ def analyze_parameter_usage(
                 f"{usage_details}"
             )
 
-        (
-            device_type,
-            control_parameter,
-        ) = next(iter(meanings))
+        if shared_mos_m and len(device_types) > 1:
+            device_type, control_parameter = "MOS", "M"
+        else:
+            device_type, control_parameter = next(iter(meanings))
 
         parameter_specs.append(
             ParameterSpec(

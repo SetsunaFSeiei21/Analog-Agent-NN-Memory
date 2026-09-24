@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # 只修改这里：正式任务的电路、采样量和集群配置。
-SOURCE_DIR="Sample_Optimizer_Circuit/5t_ota"
-CIRCUIT_NAME="5t_ota"
+SOURCE_DIR="Sample_Optimizer_Circuit/two_stage_opamp_otaf"
+CIRCUIT_NAME="two_stage_opamp_otaf"
 CIRCUIT_TYPE="single_ended_opamp"
 N_POINTS=20000
 N_WORKERS=8
@@ -33,6 +33,7 @@ fi
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$PROJECT_ROOT"
 export ANALOG_AGENT_ROOT="$PROJECT_ROOT"
+export ANALOG_SMOKE_TEST=0
 export ANALOG_CONTINUE_ON_ERROR="$CONTINUE_ON_ERROR"
 export ANALOG_KEEP_WORKSPACE="$KEEP_WORKSPACE"
 export ANALOG_CONDA_ENV="$CONDA_ENV"

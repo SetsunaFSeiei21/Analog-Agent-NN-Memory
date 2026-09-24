@@ -74,11 +74,16 @@ class ParserAndSamplerTest(unittest.TestCase):
             self.assertEqual([(spec.device_type, spec.control_parameter) for spec in specs],
                              [("CURRENT_SOURCE", "I"), ("CURRENT_SOURCE", "I")])
 
-    def test_missing_m_does_not_create_a_sampling_variable(self) -> None:
+    def test_5t_ota_uses_one_shared_m_for_nmos_and_pmos(self) -> None:
         example = ANALOG_AGENT_PATH / "Sample_Optimizer_Circuit" / "5t_ota"
         names = read_parameter_names(example / "5t_ota_params.sp")
         specs = analyze_parameter_usage(example / "5t_ota.sp", names)
-        self.assertFalse(any(spec.control_parameter == "M" for spec in specs))
+        m_specs = [spec for spec in specs if spec.control_parameter == "M"]
+        self.assertEqual(len(m_specs), 1)
+        self.assertEqual(m_specs[0].parameter_name, "M_FACTOR")
+        self.assertEqual(m_specs[0].device_type, "MOS")
+        self.assertEqual(len(m_specs[0].usages), 5)
+        self.assertEqual(resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}), [(1.0, 10.0, 1.0)])
 
     def test_m_bounds_must_use_positive_integer_grid_even_for_overrides(self) -> None:
         example = ANALOG_AGENT_PATH / "Sample_Optimizer_Circuit" / "two_stage_opamp_otaf"
@@ -86,10 +91,11 @@ class ParserAndSamplerTest(unittest.TestCase):
         specs = analyze_parameter_usage(example / "two_stage_opamp_otaf.sp", names)
         m_specs = [spec for spec in specs if spec.control_parameter == "M"]
         self.assertEqual({spec.parameter_name for spec in m_specs},
-                         {"M_TAIL1", "M_TAIL2"})
+                         {"M1_FACTOR", "M2_FACTOR"})
+        self.assertTrue(all(spec.device_type == "MOS" for spec in m_specs))
         self.assertEqual(resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}), [(1.0, 10.0, 1.0)] * 2)
         with self.assertRaisesRegex(ValueError, "正整数网格"):
-            resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}, parameter_overrides={"M_TAIL1": (1, 10, 0.5)})
+            resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}, parameter_overrides={"M1_FACTOR": (1, 10, 0.5)})
 
     def test_samplers_return_exact_count_and_legal_grid(self) -> None:
         bounds = [(0.0, 1.0, 0.35), (1.0, 2.0, 0.25)]
@@ -308,6 +314,10 @@ class ControllerIntegrationTest(unittest.TestCase):
                 self.assertEqual(controller.parameter_spec_lst[0].device_type, "CURRENT_SOURCE")
                 self.assertEqual(controller.parameter_spec_lst[0].control_parameter, "I")
                 self.assertEqual(controller.bounds[0], (1e-7, 20e-6, 1e-7))
+                m_index = controller.parameter_name_lst.index("M_FACTOR")
+                self.assertEqual(controller.parameter_spec_lst[m_index].device_type, "MOS")
+                self.assertEqual(controller.parameter_spec_lst[m_index].control_parameter, "M")
+                self.assertEqual(controller.bounds[m_index], (1.0, 10.0, 1.0))
                 result = controller.sample(n_points=6, n_workers=2)
                 self.assertTrue(result.success)
                 self.assertEqual(result.failed_num, 0)
@@ -327,7 +337,13 @@ class ControllerIntegrationTest(unittest.TestCase):
                                                if line.startswith(".param IBIAS_A=")))
                     self.assertTrue(any(np.isclose(rewritten_bias, value, rtol=1e-12, atol=0)
                                         for value in bias_values))
-                    self.assertIn("IBIAS_SRC VDD IBIAS DC {IBIAS_A}", (workspace / "5t_ota.sp").read_text(encoding="utf-8"))
+                    rewritten_m = float(next(line.split("=", 1)[1] for line in params.splitlines()
+                                             if line.startswith(".param M_FACTOR=")))
+                    self.assertTrue(rewritten_m.is_integer() and 1 <= rewritten_m <= 10)
+                    circuit = (workspace / "5t_ota.sp").read_text(encoding="utf-8")
+                    self.assertIn("IBIAS_SRC VDD N_BIAS DC {IBIAS_A}", circuit)
+                    self.assertIn("m={2*M_FACTOR}", circuit)
+                    self.assertEqual(circuit.count("m={M_FACTOR}"), 4)
                     for testbench in ["ac", "stability", "power", "cmrr", "psrr", "slew"]:
                         text = (workspace / f"tb_{testbench}.cir").read_text(encoding="utf-8")
                         self.assertNotIn("{{IBIAS}}", text)
@@ -375,8 +391,9 @@ class ControllerIntegrationTest(unittest.TestCase):
                                      if line.startswith(f".param {name}="))
                         self.assertTrue(value.is_integer() and 1 <= value <= 10)
                     circuit = (workspace / "two_stage_opamp_otaf.sp").read_text(encoding="utf-8")
-                    self.assertIn("m={M_TAIL1}", circuit)
-                    self.assertIn("m={M_TAIL2}", circuit)
+                    self.assertIn("m={2*M1_FACTOR}", circuit)
+                    self.assertEqual(circuit.count("m={M1_FACTOR}"), 4)
+                    self.assertEqual(circuit.count("m={(2*M1_FACTOR)*M2_FACTOR}"), 2)
 
     def test_partial_metrics_preserve_available_values_and_store_missing_as_nan(self) -> None:
         fake_ngspice = Path(__file__).with_name("fake_ngspice.py").resolve()

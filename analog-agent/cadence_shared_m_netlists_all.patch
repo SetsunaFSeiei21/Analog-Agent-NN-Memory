@@ -1,0 +1,346 @@
+diff --git a/analog-agent/Sample_Optimizer_Circuit/5t_ota/5t_ota.sp b/analog-agent/Sample_Optimizer_Circuit/5t_ota/5t_ota.sp
+index 8e504e4..2ece694 100644
+--- a/analog-agent/Sample_Optimizer_Circuit/5t_ota/5t_ota.sp
++++ b/analog-agent/Sample_Optimizer_Circuit/5t_ota/5t_ota.sp
+@@ -1,24 +1,47 @@
+-* SKY130 OTA core with internally biased NMOS tail
+-* Standard testbench interface: VINP VINN VOUT VDD VSS
++* SKY130 five-transistor OTA converted from the Cadence topology.
++* Standard testbench interface: VINP VINN VOUT VDD VSS.
++* W/L use micrometers under the SKY130 PDK scale=1u option.
++* M_FACTOR is shared by the input pair and PMOS load;
++* the tail device uses twice this multiplicity.
+ 
+ .include "5t_ota_params.sp"
+ 
+ .subckt DUT VINP VINN VOUT VDD VSS
+ 
+-* Bias circuit: reference current and diode-connected NMOS are both inside DUT.
+-* IBIAS_A is a design parameter in amperes, not a testbench condition.
+-IBIAS_SRC VDD IBIAS DC {IBIAS_A}
+-XMBIAS IBIAS IBIAS VSS VSS sky130_fd_pr__nfet_01v8 L={LBIAS} W={WBIAS}
++* Internal bias circuit corresponding to Cadence MNM3 and II0.
++IBIAS_SRC VDD N_BIAS DC {IBIAS_A}
++XMBIAS N_BIAS N_BIAS VSS VSS sky130_fd_pr__nfet_01v8
+++ L={LBIAS}
+++ W={WBIAS}
+++ m=1
+ 
+-* NMOS differential pair
+-XMN1 N1 VINP NTAIL VSS sky130_fd_pr__nfet_01v8 L={LIN} W={WIN}
+-XMN2 VOUT VINN NTAIL VSS sky130_fd_pr__nfet_01v8 L={LIN} W={WIN}
++* Tail current mirror corresponding to Cadence MNM2.
++* It shares W/L with the diode-connected bias NMOS.
++XMTAIL NTAIL N_BIAS VSS VSS sky130_fd_pr__nfet_01v8
+++ L={LBIAS}
+++ W={WBIAS}
+++ m={2*M_FACTOR}
+ 
+-* PMOS current-mirror load
+-XMP1 N1 N1 VDD VDD sky130_fd_pr__pfet_01v8 L={LLOAD} W={WLOAD}
+-XMP2 VOUT N1 VDD VDD sky130_fd_pr__pfet_01v8 L={LLOAD} W={WLOAD}
++* NMOS differential pair corresponding to Cadence MNM0/MNM1.
++XMN_INP N1 VINP NTAIL VSS sky130_fd_pr__nfet_01v8
+++ L={LIN}
+++ W={WIN}
+++ m={M_FACTOR}
+ 
+-* NMOS tail current source
+-XMTAIL NTAIL IBIAS VSS VSS sky130_fd_pr__nfet_01v8 L={LTAIL} W={WTAIL}
++XMN_INN VOUT VINN NTAIL VSS sky130_fd_pr__nfet_01v8
+++ L={LIN}
+++ W={WIN}
+++ m={M_FACTOR}
+ 
+-.ends DUT
+\ No newline at end of file
++* PMOS current-mirror load corresponding to Cadence MPM0/MPM1.
++XMP_DIODE N1 N1 VDD VDD sky130_fd_pr__pfet_01v8
+++ L={LLOAD}
+++ W={WLOAD}
+++ m={M_FACTOR}
++
++XMP_OUT VOUT N1 VDD VDD sky130_fd_pr__pfet_01v8
+++ L={LLOAD}
+++ W={WLOAD}
+++ m={M_FACTOR}
++
++.ends DUT
+diff --git a/analog-agent/Sample_Optimizer_Circuit/5t_ota/5t_ota_params.sp b/analog-agent/Sample_Optimizer_Circuit/5t_ota/5t_ota_params.sp
+index 2a71264..39a6698 100644
+--- a/analog-agent/Sample_Optimizer_Circuit/5t_ota/5t_ota_params.sp
++++ b/analog-agent/Sample_Optimizer_Circuit/5t_ota/5t_ota_params.sp
+@@ -1,5 +1,12 @@
+-* OTA and internal bias design parameters
+-* IBIAS_A uses amperes; SKY130 device-wrapper W/L use micrometers.
++* Five-transistor OTA design parameters.
++* IBIAS_A: A; W/L: um; M_FACTOR: positive integer multiplicity.
++*
++* Cadence-to-ngspice mapping:
++*   desvar_IB       -> IBIAS_A
++*   desvar_w1/l1    -> WBIAS/LBIAS (bias NMOS and tail NMOS)
++*   desvar_w2/l2    -> WIN/LIN     (NMOS input pair)
++*   desvar_w3/l3    -> WLOAD/LLOAD (PMOS current-mirror load)
++*   desvar_m        -> M_FACTOR
+ 
+ .param IBIAS_A=10e-6
+ .param WBIAS=8
+@@ -8,5 +15,4 @@
+ .param LIN=0.5
+ .param WLOAD=40
+ .param LLOAD=0.5
+-.param WTAIL=8
+-.param LTAIL=0.5
++.param M_FACTOR=1
+diff --git a/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp_otaf/two_stage_opamp_otaf.sp b/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp_otaf/two_stage_opamp_otaf.sp
+index c7bfba0..888b90a 100644
+--- a/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp_otaf/two_stage_opamp_otaf.sp
++++ b/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp_otaf/two_stage_opamp_otaf.sp
+@@ -1,28 +1,59 @@
+-* SKY130 two-stage single-ended op amp; first stage is a five-transistor OTA.
++* SKY130 two-stage single-ended op amp converted from the Cadence topology.
+ * Testbench interface: VINP VINN VOUT VDD VSS.
+ * MOS W/L use micrometers under the SKY130 PDK scale=1u option.
+-* Each M controls the number of parallel copies of its MOS group.
++* M1_FACTOR scales the first-stage devices and tail-current mirror.
++* M2_FACTOR additionally scales both second-stage devices.
+ 
+ .include "two_stage_opamp_otaf_params.sp"
+ 
+ .subckt DUT VINP VINN VOUT VDD VSS
+ 
+-* Internal bias: reference current and the diode-connected NMOS are part of DUT.
++* Internal bias corresponding to Cadence MNM4 and II0.
+ IBIAS_SRC VDD VBIAS DC {IBIAS_A}
+-XMBIAS VBIAS VBIAS VSS VSS sky130_fd_pr__nfet_01v8 L={LBIAS} W={WBIAS}
+-
+-* Stage 1: NMOS differential pair with PMOS current-mirror load.
+-* VINN drives the diode-load branch so that OTA_OUT is inverted from VINP.
+-XMIN1 N1 VINN NTAIL VSS sky130_fd_pr__nfet_01v8 L={LIN} W={WIN}
+-XMIN2 OTA_OUT VINP NTAIL VSS sky130_fd_pr__nfet_01v8 L={LIN} W={WIN}
+-XMPLOAD1 N1 N1 VDD VDD sky130_fd_pr__pfet_01v8 L={LLOAD} W={WLOAD}
+-XMPLOAD2 OTA_OUT N1 VDD VDD sky130_fd_pr__pfet_01v8 L={LLOAD} W={WLOAD}
+-XMTAIL NTAIL VBIAS VSS VSS sky130_fd_pr__nfet_01v8 L={LBIAS} W={WBIAS} m={M_TAIL1}
+-
+-* Stage 2: PMOS common-source gain with an NMOS mirrored-current load.
+-* It inverts OTA_OUT again, so VINP is the non-inverting input of DUT.
+-XMPSTAGE2 VOUT OTA_OUT VDD VDD sky130_fd_pr__pfet_01v8 L={L2P} W={W2P}
+-XMNSTAGE2 VOUT VBIAS VSS VSS sky130_fd_pr__nfet_01v8 L={LBIAS} W={WBIAS} m={M_TAIL2}
++XMBIAS VBIAS VBIAS VSS VSS sky130_fd_pr__nfet_01v8
+++ L={LBIAS}
+++ W={WBIAS}
+++ m=1
++
++* First-stage tail device corresponding to Cadence MNM3.
++XMTAIL NTAIL VBIAS VSS VSS sky130_fd_pr__nfet_01v8
+++ L={LBIAS}
+++ W={WBIAS}
+++ m={2*M1_FACTOR}
++
++* Stage 1: NMOS differential pair corresponding to Cadence MNM0/MNM2.
++XMN_INN N1 VINN NTAIL VSS sky130_fd_pr__nfet_01v8
+++ L={LIN}
+++ W={WIN}
+++ m={M1_FACTOR}
++
++XMN_INP OTA_OUT VINP NTAIL VSS sky130_fd_pr__nfet_01v8
+++ L={LIN}
+++ W={WIN}
+++ m={M1_FACTOR}
++
++* PMOS current-mirror load corresponding to Cadence MPM0/MPM1.
++XMP_DIODE N1 N1 VDD VDD sky130_fd_pr__pfet_01v8
+++ L={LLOAD}
+++ W={WLOAD}
+++ m={M1_FACTOR}
++
++XMP_MIRROR OTA_OUT N1 VDD VDD sky130_fd_pr__pfet_01v8
+++ L={LLOAD}
+++ W={WLOAD}
+++ m={M1_FACTOR}
++
++* Stage 2 corresponding to Cadence MNM5/MPM2.
++* Both devices use the same effective multiplicity: (2*M1_FACTOR)*M2_FACTOR.
++XMP_STAGE2 VOUT OTA_OUT VDD VDD sky130_fd_pr__pfet_01v8
+++ L={L2P}
+++ W={W2P}
+++ m={(2*M1_FACTOR)*M2_FACTOR}
++
++XMN_STAGE2 VOUT VBIAS VSS VSS sky130_fd_pr__nfet_01v8
+++ L={LBIAS}
+++ W={WBIAS}
+++ m={(2*M1_FACTOR)*M2_FACTOR}
+ 
+ * Miller compensation: series nulling resistor and ideal capacitor.
+ RNULL OTA_OUT COMP {RNULL_OHM}
+diff --git a/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp_otaf/two_stage_opamp_otaf_params.sp b/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp_otaf/two_stage_opamp_otaf_params.sp
+index 67d141a..1801122 100644
+--- a/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp_otaf/two_stage_opamp_otaf_params.sp
++++ b/analog-agent/Sample_Optimizer_Circuit/two_stage_opamp_otaf/two_stage_opamp_otaf_params.sp
+@@ -1,4 +1,17 @@
+-* W/L: um; current: A; resistance: ohm; capacitance: F
++* Two-stage op-amp design parameters.
++* W/L: um; current: A; resistance: ohm; capacitance: F.
++* M1_FACTOR and M2_FACTOR are positive integer multiplicities.
++*
++* Cadence-to-ngspice mapping:
++*   desvar_IB       -> IBIAS_A
++*   desvar_w1/l1    -> WIN/LIN
++*   desvar_w2/l2    -> WLOAD/LLOAD
++*   desvar_w3/l3    -> WBIAS/LBIAS
++*   desvar_w4/l4    -> W2P/L2P
++*   desvar_m1/m2    -> M1_FACTOR/M2_FACTOR
++*   desvar_res      -> RNULL_OHM
++*   desvar_Cc       -> CCOMP_F
++
+ .param IBIAS_A=10e-6
+ .param WBIAS=8
+ .param LBIAS=0.5
+@@ -8,7 +21,7 @@
+ .param LLOAD=0.5
+ .param W2P=80
+ .param L2P=0.5
+-.param M_TAIL1=1
+-.param M_TAIL2=1
++.param M1_FACTOR=1
++.param M2_FACTOR=1
+ .param RNULL_OHM=10000
+-.param CCOMP_F=1e-12
+\ No newline at end of file
++.param CCOMP_F=1e-12
+diff --git a/analog-agent/src/utils/spice_parameter_analyzer.py b/analog-agent/src/utils/spice_parameter_analyzer.py
+index 75d4b40..ea385f9 100644
+--- a/analog-agent/src/utils/spice_parameter_analyzer.py
++++ b/analog-agent/src/utils/spice_parameter_analyzer.py
+@@ -29,6 +29,7 @@ DeviceControlKey = Tuple[str, str]
+ 
+ SUPPORTED_DEVICE_TYPES = frozenset(
+     {
++        "MOS",
+         "NMOS",
+         "PMOS",
+         "RESISTOR",
+@@ -444,11 +445,14 @@ def analyze_parameter_usage(
+     """
+     分析所有设计变量控制的器件类型和控制参数。
+ 
+-    一个参数可以在多个器件实例中使用，但必须保证所有位置的：
++    一个参数可以在多个器件实例中使用，但通常必须保证所有位置的：
+ 
+     1. device_type 相同；
+     2. control_parameter 相同。
+ 
++    唯一例外是 MOS 的 M：同一个乘数参数可以同时控制 NMOS.M 和
++    PMOS.M，此时统一记录为 MOS.M。这样可以表达成比例联动的器件组。
++
+     例如：
+ 
+     WN 同时控制两个 NMOS 的 W：允许。
+@@ -536,8 +540,15 @@ def analyze_parameter_usage(
+             for usage in usages
+         }
+ 
+-        # 同一参数的所有使用位置必须具有相同语义
+-        if len(meanings) != 1:
++        device_types = {usage.device_type for usage in usages}
++        control_parameters = {usage.control_parameter for usage in usages}
++        shared_mos_m = (
++            control_parameters == {"M"}
++            and device_types.issubset({"NMOS", "PMOS"})
++        )
++
++        # 除共享 MOS 乘数外，同一参数的所有使用位置必须具有相同语义。
++        if len(meanings) != 1 and not shared_mos_m:
+ 
+             usage_details = "; ".join(
+ 
+@@ -556,10 +567,10 @@ def analyze_parameter_usage(
+                 f"{usage_details}"
+             )
+ 
+-        (
+-            device_type,
+-            control_parameter,
+-        ) = next(iter(meanings))
++        if shared_mos_m and len(device_types) > 1:
++            device_type, control_parameter = "MOS", "M"
++        else:
++            device_type, control_parameter = next(iter(meanings))
+ 
+         parameter_specs.append(
+             ParameterSpec(
+diff --git a/analog-agent/tests/test_phase1.py b/analog-agent/tests/test_phase1.py
+index 875b2f3..548d241 100644
+--- a/analog-agent/tests/test_phase1.py
++++ b/analog-agent/tests/test_phase1.py
+@@ -74,11 +74,16 @@ class ParserAndSamplerTest(unittest.TestCase):
+             self.assertEqual([(spec.device_type, spec.control_parameter) for spec in specs],
+                              [("CURRENT_SOURCE", "I"), ("CURRENT_SOURCE", "I")])
+ 
+-    def test_missing_m_does_not_create_a_sampling_variable(self) -> None:
++    def test_5t_ota_uses_one_shared_m_for_nmos_and_pmos(self) -> None:
+         example = ANALOG_AGENT_PATH / "Sample_Optimizer_Circuit" / "5t_ota"
+         names = read_parameter_names(example / "5t_ota_params.sp")
+         specs = analyze_parameter_usage(example / "5t_ota.sp", names)
+-        self.assertFalse(any(spec.control_parameter == "M" for spec in specs))
++        m_specs = [spec for spec in specs if spec.control_parameter == "M"]
++        self.assertEqual(len(m_specs), 1)
++        self.assertEqual(m_specs[0].parameter_name, "M_FACTOR")
++        self.assertEqual(m_specs[0].device_type, "MOS")
++        self.assertEqual(len(m_specs[0].usages), 5)
++        self.assertEqual(resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}), [(1.0, 10.0, 1.0)])
+ 
+     def test_m_bounds_must_use_positive_integer_grid_even_for_overrides(self) -> None:
+         example = ANALOG_AGENT_PATH / "Sample_Optimizer_Circuit" / "two_stage_opamp_otaf"
+@@ -86,10 +91,11 @@ class ParserAndSamplerTest(unittest.TestCase):
+         specs = analyze_parameter_usage(example / "two_stage_opamp_otaf.sp", names)
+         m_specs = [spec for spec in specs if spec.control_parameter == "M"]
+         self.assertEqual({spec.parameter_name for spec in m_specs},
+-                         {"M_TAIL1", "M_TAIL2"})
++                         {"M1_FACTOR", "M2_FACTOR"})
++        self.assertTrue(all(spec.device_type == "MOS" for spec in m_specs))
+         self.assertEqual(resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}), [(1.0, 10.0, 1.0)] * 2)
+         with self.assertRaisesRegex(ValueError, "正整数网格"):
+-            resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}, parameter_overrides={"M_TAIL1": (1, 10, 0.5)})
++            resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}, parameter_overrides={"M1_FACTOR": (1, 10, 0.5)})
+ 
+     def test_samplers_return_exact_count_and_legal_grid(self) -> None:
+         bounds = [(0.0, 1.0, 0.35), (1.0, 2.0, 0.25)]
+@@ -308,6 +314,10 @@ class ControllerIntegrationTest(unittest.TestCase):
+                 self.assertEqual(controller.parameter_spec_lst[0].device_type, "CURRENT_SOURCE")
+                 self.assertEqual(controller.parameter_spec_lst[0].control_parameter, "I")
+                 self.assertEqual(controller.bounds[0], (1e-7, 20e-6, 1e-7))
++                m_index = controller.parameter_name_lst.index("M_FACTOR")
++                self.assertEqual(controller.parameter_spec_lst[m_index].device_type, "MOS")
++                self.assertEqual(controller.parameter_spec_lst[m_index].control_parameter, "M")
++                self.assertEqual(controller.bounds[m_index], (1.0, 10.0, 1.0))
+                 result = controller.sample(n_points=6, n_workers=2)
+                 self.assertTrue(result.success)
+                 self.assertEqual(result.failed_num, 0)
+@@ -327,7 +337,13 @@ class ControllerIntegrationTest(unittest.TestCase):
+                                                if line.startswith(".param IBIAS_A=")))
+                     self.assertTrue(any(np.isclose(rewritten_bias, value, rtol=1e-12, atol=0)
+                                         for value in bias_values))
+-                    self.assertIn("IBIAS_SRC VDD IBIAS DC {IBIAS_A}", (workspace / "5t_ota.sp").read_text(encoding="utf-8"))
++                    rewritten_m = float(next(line.split("=", 1)[1] for line in params.splitlines()
++                                             if line.startswith(".param M_FACTOR=")))
++                    self.assertTrue(rewritten_m.is_integer() and 1 <= rewritten_m <= 10)
++                    circuit = (workspace / "5t_ota.sp").read_text(encoding="utf-8")
++                    self.assertIn("IBIAS_SRC VDD N_BIAS DC {IBIAS_A}", circuit)
++                    self.assertIn("m={2*M_FACTOR}", circuit)
++                    self.assertEqual(circuit.count("m={M_FACTOR}"), 4)
+                     for testbench in ["ac", "stability", "power", "cmrr", "psrr", "slew"]:
+                         text = (workspace / f"tb_{testbench}.cir").read_text(encoding="utf-8")
+                         self.assertNotIn("{{IBIAS}}", text)
+@@ -375,8 +391,9 @@ class ControllerIntegrationTest(unittest.TestCase):
+                                      if line.startswith(f".param {name}="))
+                         self.assertTrue(value.is_integer() and 1 <= value <= 10)
+                     circuit = (workspace / "two_stage_opamp_otaf.sp").read_text(encoding="utf-8")
+-                    self.assertIn("m={M_TAIL1}", circuit)
+-                    self.assertIn("m={M_TAIL2}", circuit)
++                    self.assertIn("m={2*M1_FACTOR}", circuit)
++                    self.assertEqual(circuit.count("m={M1_FACTOR}"), 4)
++                    self.assertEqual(circuit.count("m={(2*M1_FACTOR)*M2_FACTOR}"), 2)
+ 
+     def test_partial_metrics_preserve_available_values_and_store_missing_as_nan(self) -> None:
+         fake_ngspice = Path(__file__).with_name("fake_ngspice.py").resolve()
