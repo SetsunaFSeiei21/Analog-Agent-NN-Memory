@@ -97,6 +97,22 @@ class ParserAndSamplerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "正整数网格"):
             resolve_parameter_bounds(m_specs, {"M": (1, 10, 1)}, parameter_overrides={"M1_FACTOR": (1, 10, 0.5)})
 
+    def test_two_stage_folded_opamp_parameter_mapping(self) -> None:
+        example = ANALOG_AGENT_PATH / "Sample_Optimizer_Circuit" / "two_stage_folded_opamp"
+        names = read_parameter_names(example / "two_stage_folded_opamp_params.sp")
+        specs = analyze_parameter_usage(example / "two_stage_folded_opamp.sp", names)
+        self.assertEqual(len(names), 23)
+        self.assertEqual(len(specs), 23)
+        m_specs = {spec.parameter_name: spec for spec in specs if spec.control_parameter == "M"}
+        self.assertEqual(set(m_specs), {"M1_FACTOR", "M2_FACTOR"})
+        self.assertTrue(all(spec.device_type == "MOS" for spec in m_specs.values()))
+        self.assertEqual(len(m_specs["M1_FACTOR"].usages), 13)
+        self.assertEqual(len(m_specs["M2_FACTOR"].usages), 2)
+        self.assertEqual(
+            resolve_parameter_bounds(list(m_specs.values()), {"M": (1, 10, 1)}),
+            [(1.0, 10.0, 1.0)] * 2,
+        )
+
     def test_samplers_return_exact_count_and_legal_grid(self) -> None:
         bounds = [(0.0, 1.0, 0.35), (1.0, 2.0, 0.25)]
         names = ["A", "B"]
@@ -394,6 +410,48 @@ class ControllerIntegrationTest(unittest.TestCase):
                     self.assertIn("m={2*M1_FACTOR}", circuit)
                     self.assertEqual(circuit.count("m={M1_FACTOR}"), 4)
                     self.assertEqual(circuit.count("m={(2*M1_FACTOR)*M2_FACTOR}"), 2)
+
+    def test_two_stage_folded_opamp_samples_integer_m_and_rewrites_workspace(self) -> None:
+        fake_ngspice = Path(__file__).with_name("fake_ngspice.py").resolve()
+        example = ANALOG_AGENT_PATH / "Sample_Optimizer_Circuit" / "two_stage_folded_opamp"
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "two_stage_folded_opamp"
+            shutil.copytree(example, source)
+            with Sampling_Controller(
+                src_path=source,
+                circuit_name="two_stage_folded_opamp",
+                circuit_type="single_ended_opamp",
+                target_path=root / "history",
+                metrics=["DC_GAIN", "UGF", "PM", "POWER"],
+                ngspice_command=str(fake_ngspice),
+                keep_workspace=True,
+                console_log=False,
+            ) as controller:
+                self.assertEqual(len(controller.parameter_name_lst), 23)
+                m_indices = [index for index, spec in enumerate(controller.parameter_spec_lst)
+                             if spec.control_parameter == "M"]
+                self.assertEqual(len(m_indices), 2)
+                self.assertTrue(all(controller.bounds[index] == (1.0, 10.0, 1.0)
+                                    for index in m_indices))
+                result = controller.sample(n_points=6, n_workers=2, continue_on_error=False)
+                self.assertTrue(result.success)
+
+                with result.design_csv_path.open(encoding="utf-8") as file:
+                    rows = list(csv.DictReader(file))
+                self.assertEqual(len(rows), 6)
+                for row in rows:
+                    for index in m_indices:
+                        value = float(row[controller.parameter_name_lst[index]])
+                        self.assertTrue(value.is_integer() and 1 <= value <= 10)
+
+                workspaces = list((result.target_path / ".workspaces").glob("run_*/workspace_*"))
+                self.assertEqual(len(workspaces), 2)
+                for workspace in workspaces:
+                    circuit = (workspace / "two_stage_folded_opamp.sp").read_text(encoding="utf-8")
+                    self.assertEqual(circuit.count("m={2*M1_FACTOR}"), 3)
+                    self.assertEqual(circuit.count("m={M1_FACTOR}"), 8)
+                    self.assertEqual(circuit.count("m={M1_FACTOR*M2_FACTOR}"), 2)
 
     def test_partial_metrics_preserve_available_values_and_store_missing_as_nan(self) -> None:
         fake_ngspice = Path(__file__).with_name("fake_ngspice.py").resolve()
