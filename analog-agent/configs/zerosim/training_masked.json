@@ -1,0 +1,13 @@
+{
+  "epochs": 100,
+  "learning_rate": 0.0003,
+  "weight_decay": 0.0001,
+  "gradient_accumulation_steps": 1,
+  "max_gradient_norm": 1.0,
+  "amp_dtype": "bfloat16",
+  "early_stopping_patience": 15,
+  "huber_delta": 1.0,
+  "use_loss_mask": true,
+  "moe_balance_weight": 0.01,
+  "seed": 0
+}

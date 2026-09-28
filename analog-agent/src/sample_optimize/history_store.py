@@ -473,8 +473,9 @@ class SamplingHistoryStore:
                     float(value) if math.isfinite(float(value)) else None
                     for value in metric_row
                 ]
-                # Partial metric rows remain usable through their per-metric validity mask.
-                success = int(any(value is not None for value in stored_metrics))
+                # ``success`` keeps its legacy meaning (all requested metrics valid).
+                # Neural readers still consume partial rows through the per-metric mask.
+                success = int(failure is None and all(value is not None for value in stored_metrics))
                 error_type = None if failure is None else str(failure.get("error_type", ""))
                 error_message = None if failure is None else str(failure.get("error", ""))[:20000]
 

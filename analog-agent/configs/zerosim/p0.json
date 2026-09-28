@@ -1,0 +1,14 @@
+{
+  "d_model": 256,
+  "num_encoder_layers": 6,
+  "local_attention_layers": 2,
+  "num_heads": 8,
+  "dim_feedforward": 1024,
+  "parameter_injection_layer": 4,
+  "decoder_layers": 2,
+  "dropout": 0.1,
+  "head_type": "shared",
+  "moe_experts": 4,
+  "moe_top_k": 2,
+  "adapter_rank": 8
+}
