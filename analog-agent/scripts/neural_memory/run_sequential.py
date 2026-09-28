@@ -7,7 +7,6 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-import torch
 from torch.utils.data import DataLoader
 
 

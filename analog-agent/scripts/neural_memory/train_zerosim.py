@@ -30,6 +30,10 @@ def main() -> None:
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--device", default=None)
     parser.add_argument("--history-output", type=Path, default=None)
+    parser.add_argument(
+        "--allow-incomplete-data", action="store_true",
+        help="仅用于开发冒烟；生产训练默认强制每拓扑至少 20,000 个真实可用点。",
+    )
     args = parser.parse_args()
 
     model_config = ZeroSimConfig.load(args.model_config)
@@ -47,6 +51,7 @@ def main() -> None:
         topologies_per_batch=args.topologies_per_batch,
         num_workers=args.num_workers,
         device=args.device,
+        enforce_expected_points=not args.allow_incomplete_data,
     )
     if args.history_output:
         args.history_output.parent.mkdir(parents=True, exist_ok=True)

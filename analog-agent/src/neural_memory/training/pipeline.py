@@ -55,6 +55,7 @@ def train_from_manifest(
     topologies_per_batch: int = 4,
     num_workers: int = 0,
     device: str | torch.device | None = None,
+    enforce_expected_points: bool = True,
 ) -> TrainingArtifacts:
     if missing_policy == "masked" and not training_config.use_loss_mask:
         raise ValueError("masked 目标必须启用 loss mask")
@@ -62,11 +63,12 @@ def train_from_manifest(
         raise ValueError("sentinel ablation 必须禁用 loss mask")
     manifest = ExperimentManifest.load(manifest_path, enforce_frozen_protocol=True)
     entries = manifest.by_role("initial_train")
-    records = [
-        record
-        for entry in entries
-        for record in HistoryReader(entry.database_path, entry.topology_id).read(access_levels=("train_visible",))
-    ]
+    records: list[SampleRecord] = []
+    for entry in entries:
+        reader = HistoryReader(entry.database_path, entry.topology_id)
+        if enforce_expected_points:
+            reader.assert_ready(entry.expected_usable_points, access_levels=("train_visible",))
+        records.extend(reader.read(access_levels=("train_visible",)))
     train_records, validation_records = _split_by_topology(records, validation_fraction, training_config.seed)
     # Frozen once, strictly from the initial-topology training split.
     scaler = TargetScaler.fit(
@@ -91,6 +93,10 @@ def train_from_manifest(
         validation_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_circuit_samples,
         num_workers=num_workers, pin_memory=torch.cuda.is_available(),
     )
+    torch.manual_seed(training_config.seed)
+    np.random.seed(training_config.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(training_config.seed)
     model = ZeroSimModel(model_config)
     trainer = Trainer(model, scaler, training_config, device=device)
     history = trainer.fit(train_loader, validation_loader)

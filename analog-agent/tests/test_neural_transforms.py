@@ -35,3 +35,8 @@ def test_target_transform_round_trip_and_slew_magnitude() -> None:
 def test_scaler_refuses_metric_without_initial_train_observation() -> None:
     with pytest.raises(ValueError, match="没有可用于拟合"):
         TargetScaler.fit([(None,) + ROWS[0][1:]])
+
+
+def test_sentinel_value_is_frozen_at_minus_twenty() -> None:
+    with pytest.raises(ValueError, match="-20.0"):
+        TargetScaler.fit(ROWS, missing_policy="sentinel", z_missing=-5.0)

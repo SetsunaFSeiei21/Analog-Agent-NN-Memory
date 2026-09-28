@@ -14,16 +14,16 @@ ota5/
 
 如果 `ota5.sp` 还引用其他本地模型或子电路文件，这些文件也应放在该目录中。Simulator 会把电路目录中的源文件和子目录复制到每个独立 workspace。
 
-目前 `single_ended_opamp` 的 testbench 使用五引脚接口 `.subckt DUT VINP VINN VOUT VDD VSS`。偏置电流源应位于 DUT 内部，并通过参数文件中的 `.param IBIAS_A=10e-6` 控制；默认采样范围为 1–50 µA、步长 1 µA。六份默认仿真条件 JSON 不再提供 `IBIAS`。已有六引脚电路须调整接口；已有历史库的参数列若发生变化，使用新的电路名称或历史目录。
+目前 `single_ended_opamp` 的 testbench 使用五引脚接口 `.subckt DUT VINP VINN VOUT VDD VSS`。偏置电流源应位于 DUT 内部，并通过参数文件中的 `.param IBIAS_A=10e-6` 控制；默认采样范围为 0.1–20 µA、步长 0.1 µA。六份默认仿真条件 JSON 不再提供 `IBIAS`。已有六引脚电路须调整接口；已有历史库的参数列若发生变化，使用新的电路名称或历史目录。
 
-`examples/five_t_ota/` 提供完整的九参数示例，包括可采样的偏置电流、偏置管和 OTA 晶体管。电流源是理想直流参考源，电流值以安培表示；仿真供电消耗仍由电源端测得。首次运行会移动输入电路目录，建议先将示例目录复制到工作目录。运行真实 ngspice 前检查条件 JSON 中的 `PDK_PATH` 是否指向本机模型文件。
+`Sample_Optimizer_Circuit/5t_ota/` 提供完整示例，包括可采样的偏置电流、偏置管和 OTA 晶体管。电流源是理想直流参考源，电流值以安培表示；仿真供电消耗仍由电源端测得。首次运行会移动输入电路目录，建议先将示例目录复制到工作目录。运行真实 ngspice 前检查条件 JSON 中的 `PDK_PATH` 是否指向本机模型文件。
 
 在 `analog-agent/` 目录下试跑：
 
 ```bash
 mkdir -p circuits
-cp -r examples/five_t_ota circuits/five_t_ota
-python -m src.sample_optimize.sample_only --src_path circuits/five_t_ota --circuit_type single_ended_opamp --circuit_name five_t_ota --target_path sampling_database --metrics DC_GAIN UGF PM POWER --n_points 6 --n_workers 1 --keep_workspace
+cp -r Sample_Optimizer_Circuit/5t_ota circuits/5t_ota
+python -m src.sample_optimize.sample_only --src_path circuits/5t_ota --circuit_type single_ended_opamp --circuit_name 5t_ota --target_path sampling_database --metrics DC_GAIN UGF PM POWER --n_points 6 --n_workers 1 --keep_workspace
 ```
 
 ## 调用示例
@@ -81,3 +81,9 @@ circuit_name/
 ## 日志
 
 Parser、Parameter Analyzer、Random/LHS/Sobol Sampler、Simulator 和 HistoryStore 都使用 Controller 创建的同一日志树。默认同时写入终端和 `logs/sampling.log`，单文件最大 10 MiB，保留 5 个轮转文件。
+
+## ZeroSim 神经记忆
+
+ZeroSim 模型、数据协议、R² memory 选择、adapter 适配、consolidation 和盲测运行方式见
+[`docs/zerosim_neural_memory.md`](docs/zerosim_neural_memory.md)。生产数据采样 CLI 默认要求每个拓扑在
+`parameter_ranges.json` 中显式覆盖所有设计参数；旧 Python API 保持兼容。

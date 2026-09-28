@@ -8,7 +8,7 @@ import torch
 from .data import CompiledTopology, TargetScaler
 from .inference import ZeroSimPredictor
 from .memory import AdaptationConfig, AdapterTrainer, MemoryRegistry, R2MemorySelector, SelectionResult
-from .model import adapter_state_dict, load_adapter_state_dict, reset_adapters
+from .model import load_adapter_state_dict, reset_adapters
 
 
 class NeuralMemoryService:

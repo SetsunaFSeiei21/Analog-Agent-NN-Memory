@@ -210,7 +210,9 @@ class SequentialExperiment:
                 old_entries = self.registry.entries()
                 replay_loader = self.replay_loader_factory(self.replay.records())
                 self.consolidator.consolidate(self.model, replay_loader, device=self.device)
-                self.registry.bump_backbone_version(f"backbone-v{completed_nonblind}")
+                self.registry.bump_backbone_version(
+                    f"{self.registry.backbone_version}.c{completed_nonblind}"
+                )
                 self._rebase_memories(old_entries)
                 consolidation_ran = True
             outcomes.append(SequentialOutcome(

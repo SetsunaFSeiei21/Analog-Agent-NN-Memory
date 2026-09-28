@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 
 from .expression import evaluate_expression
-from .schema import CircuitIR, DeviceIR, DeviceType, ParameterExpression
+from .schema import CircuitIR, DeviceIR, ParameterExpression
 
 
 def resolve_circuit(circuit: CircuitIR, parameter_values: Mapping[str, float] | None = None) -> CircuitIR:

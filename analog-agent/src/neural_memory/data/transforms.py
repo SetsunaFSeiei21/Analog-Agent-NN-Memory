@@ -43,6 +43,8 @@ class TargetScaler:
             raise ValueError("TargetScaler 维度必须等于 9")
         if self.missing_policy not in MISSING_POLICIES:
             raise ValueError(f"missing_policy 必须是 {sorted(MISSING_POLICIES)}")
+        if self.missing_policy == "sentinel" and self.z_missing != -20.0:
+            raise ValueError("冻结 sentinel 协议要求 z_missing=-20.0")
         if any(value <= 0 or not math.isfinite(value) for value in self.std):
             raise ValueError("std 必须是有限正数")
 

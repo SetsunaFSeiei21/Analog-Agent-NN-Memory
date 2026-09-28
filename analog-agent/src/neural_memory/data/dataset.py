@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from ...circuit_ir import CircuitIR, build_pin_graph, parse_circuit
+from ...circuit_ir import CircuitIR, build_pin_graph, parse_circuit, resolve_circuit
 from ...circuit_ir.schema import DeviceType
 from ..contracts import SampleRecord
 from .manifest import TopologyEntry
@@ -56,11 +56,16 @@ class CompiledTopology:
 
     def parameters_for(self, record: SampleRecord) -> tuple[np.ndarray, np.ndarray]:
         values = dict(zip(record.parameter_names, record.design_values))
-        graph = build_pin_graph(self.circuit, values)
-        parameters = np.zeros((len(graph.device_parameters), len(DEVICE_PARAMETER_ORDER)), dtype=np.float32)
+        resolved = resolve_circuit(self.circuit, values)
+        parameters = np.zeros((len(resolved.devices), len(DEVICE_PARAMETER_ORDER)), dtype=np.float32)
         mask = np.zeros_like(parameters, dtype=bool)
-        for index, device_parameters in enumerate(graph.device_parameters):
-            parameters[index], mask[index] = transform_device_parameters(dict(device_parameters))
+        for index, device in enumerate(resolved.devices):
+            device_parameters = {
+                name: expression.value
+                for name, expression in device.parameters.items()
+                if expression.value is not None
+            }
+            parameters[index], mask[index] = transform_device_parameters(device_parameters)
         return parameters, mask
 
 

@@ -45,3 +45,9 @@ def test_probe_indices_depend_on_order_seed_not_model_seed() -> None:
     other = select_probe_indices(records, k=20, order_seed=4, topology_id="t")
     assert first == same
     assert first != other
+
+
+def test_final_blind_configuration_defaults_closed() -> None:
+    from src.neural_memory.memory import SequentialConfig
+
+    assert not SequentialConfig().open_final_blind

@@ -69,3 +69,34 @@ class HistoryReader:
                 database_path=self.database_path,
             ))
         return result
+
+    def statistics(self, *, access_levels: Iterable[str]) -> dict[str, int]:
+        levels = tuple(dict.fromkeys(access_levels))
+        if not levels:
+            return {"rows": 0, "usable_rows": 0, "real_spice_calls": 0}
+        placeholders = ",".join("?" for _ in levels)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT metric_values_json, is_real_spice_call FROM samples "
+                f"WHERE access_level IN ({placeholders})",
+                levels,
+            ).fetchall()
+        usable = sum(any(value is not None for value in json.loads(row["metric_values_json"])) for row in rows)
+        return {
+            "rows": len(rows),
+            "usable_rows": int(usable),
+            "real_spice_calls": sum(int(row["is_real_spice_call"]) for row in rows),
+        }
+
+    def assert_ready(self, expected_usable_points: int, *, access_levels: Iterable[str]) -> None:
+        statistics = self.statistics(access_levels=access_levels)
+        if statistics["usable_rows"] < expected_usable_points:
+            raise ValueError(
+                f"{self.topology_id} 只有 {statistics['usable_rows']} 个可用唯一点，"
+                f"冻结协议要求至少 {expected_usable_points}"
+            )
+        if statistics["real_spice_calls"] < expected_usable_points:
+            raise ValueError(
+                f"{self.topology_id} 的真实 SPICE 调用只有 {statistics['real_spice_calls']}，"
+                f"不能用缓存命中凑足 {expected_usable_points} 点预算"
+            )

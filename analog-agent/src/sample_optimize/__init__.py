@@ -18,4 +18,4 @@ __all__ = [
 ]
 from .point_simulation import OBSERVATION_SOURCES, PointSimulationResult, PointSimulator
 
-__all__ = ["OBSERVATION_SOURCES", "PointSimulationResult", "PointSimulator"]
+__all__ += ["OBSERVATION_SOURCES", "PointSimulationResult", "PointSimulator"]
