@@ -1,6 +1,6 @@
 __pycache__/
 sampling_database/
-tests/
+/tests/
 
 analog-agent/hpc_logs/
 analog-agent/smoke_test_results/

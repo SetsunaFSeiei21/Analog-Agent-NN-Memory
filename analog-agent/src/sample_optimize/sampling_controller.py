@@ -26,7 +26,7 @@ from ..utils import (
     read_parameter_names,
     resolve_parameter_bounds,
 )
-from .history_store import SamplingHistoryStore
+from .history_store import SamplingHistoryStore, _validate_access_level
 from .lhs_sampling import LHS_Sampler
 from .random_sampling import Random_Sampler
 from .simulating import Simulator
@@ -169,6 +169,9 @@ class Sampling_Controller:
         simulation_timeout_seconds: Optional[float] = 300.0,
         keep_workspace: bool = False,
         max_duplicate_rounds: int = 50,
+        parameter_range_config_path: Optional[Path] = None,
+        require_parameter_overrides: bool = False,
+        sample_access_level: str = "train_visible",
     ) -> None:
         if not isinstance(circuit_name, str) or not circuit_name.strip():
             raise ValueError("circuit_name 不能为空")
@@ -187,7 +190,11 @@ class Sampling_Controller:
         self.seed = seed
         self.parameter_aliases = dict(parameter_aliases or {})
         self.device_rules = tuple(device_rules)
-        self.parameter_range_config_path = DEFAULT_PARAMETER_RANGE_CONFIG_PATH
+        self.parameter_range_config_path = Path(
+            parameter_range_config_path or DEFAULT_PARAMETER_RANGE_CONFIG_PATH
+        ).resolve()
+        self.require_parameter_overrides = require_parameter_overrides
+        self.sample_access_level = _validate_access_level(sample_access_level)
         self.max_duplicate_rounds = max_duplicate_rounds
         self.log_level = log_level
         self.console_log = console_log
@@ -226,6 +233,16 @@ class Sampling_Controller:
                 self.circuit_name,
                 logger=analyzer_logger,
             )
+            if self.require_parameter_overrides:
+                expected = {name.casefold(): name for name in self.parameter_name_lst}
+                actual = {name.casefold(): name for name in self.parameter_overrides}
+                missing = sorted(expected[key] for key in set(expected) - set(actual))
+                extra = sorted(actual[key] for key in set(actual) - set(expected))
+                if missing or extra:
+                    raise ValueError(
+                        "ZeroSim 数据生成要求每个拓扑显式覆盖全部参数范围："
+                        f"missing={missing}, extra={extra}"
+                    )
             self.bounds: list[Bounds] = resolve_parameter_bounds(
                 self.parameter_spec_lst,
                 self.control_parameter_ranges,
@@ -473,6 +490,8 @@ class Sampling_Controller:
                 "bounds": self.bounds,
                 "raw_metrics": self.metrics,
             },
+            source="batch",
+            access_level=self.sample_access_level,
         )
         run_finalized = False
         self.logger.info("开始采样运行：run_id=%s, points=%d", run_id, n_points)
@@ -514,6 +533,7 @@ class Sampling_Controller:
                 metrics=simulation_result.metrics,
                 sampling_methods=sampling_methods,
                 failure_records=simulation_result.failure_records,
+                access_level=self.sample_access_level,
             )
             self.history_store.mark_run_completed(run_id, failed_num)
             run_finalized = True
