@@ -7,7 +7,7 @@
 * W and L are in um under the Sky130 scale=1u convention.
 * ============================================================
 
-.include "opamp0_params.sp"
+.include "Opamp0_params.sp"
 
 .subckt DUT VINP VINN VOUT VDD VSS
 
