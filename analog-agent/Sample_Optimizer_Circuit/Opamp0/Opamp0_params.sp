@@ -1,7 +1,7 @@
 * ============================================================
-* opamp17_params.sp
+* opamp0_params.sp
 *
-* Design parameters for opamp17
+* Design parameters for opamp0
 *
 * Units:
 *   W, L    -> um

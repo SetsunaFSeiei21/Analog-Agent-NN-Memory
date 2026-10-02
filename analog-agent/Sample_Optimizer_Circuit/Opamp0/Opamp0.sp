@@ -1,5 +1,5 @@
 * ============================================================
-* opamp17 - Sky130 1.8-V operational amplifier
+* opamp0 - Sky130 1.8-V operational amplifier
 *
 * Standard interface:
 * .subckt DUT VINP VINN VOUT VDD VSS
@@ -7,7 +7,7 @@
 * W and L are in um under the Sky130 scale=1u convention.
 * ============================================================
 
-.include "opamp17_params.sp"
+.include "opamp0_params.sp"
 
 .subckt DUT VINP VINN VOUT VDD VSS
 
