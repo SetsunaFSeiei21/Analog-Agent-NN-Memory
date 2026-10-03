@@ -17,7 +17,16 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 import numpy as np
 
 
-__all__ = ["SamplingHistoryStore"]
+__all__ = ["ACCESS_LEVELS", "SamplingHistoryStore"]
+
+
+ACCESS_LEVELS = frozenset({"train_visible", "hidden_eval", "final_blind"})
+
+
+def _validate_access_level(value: str) -> str:
+    if value not in ACCESS_LEVELS:
+        raise ValueError(f"access_level 必须是 {sorted(ACCESS_LEVELS)} 之一")
+    return value
 
 
 def _utc_now() -> str:
@@ -92,7 +101,12 @@ class SamplingHistoryStore:
                     n_workers INTEGER NOT NULL,
                     allocation_json TEXT NOT NULL,
                     config_json TEXT NOT NULL,
-                    error_message TEXT
+                    error_message TEXT,
+                    source TEXT NOT NULL DEFAULT 'batch',
+                    task_id TEXT,
+                    arrival_step INTEGER,
+                    access_level TEXT NOT NULL DEFAULT 'train_visible',
+                    metadata_json TEXT NOT NULL DEFAULT '{}'
                 );
 
                 CREATE TABLE IF NOT EXISTS samples (
@@ -107,12 +121,43 @@ class SamplingHistoryStore:
                     error_type TEXT,
                     error_message TEXT,
                     created_at TEXT NOT NULL,
+                    access_level TEXT NOT NULL DEFAULT 'train_visible',
+                    is_real_spice_call INTEGER NOT NULL DEFAULT 1,
+                    cache_hit_sample_id INTEGER,
+                    backbone_version TEXT,
+                    adapter_version TEXT,
                     FOREIGN KEY (run_id) REFERENCES sampling_runs(run_id)
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_samples_run_id ON samples(run_id);
                 CREATE INDEX IF NOT EXISTS idx_samples_method ON samples(sample_method);
                 """
+            )
+
+            self._ensure_columns(
+                connection,
+                "sampling_runs",
+                {
+                    "source": "TEXT NOT NULL DEFAULT 'batch'",
+                    "task_id": "TEXT",
+                    "arrival_step": "INTEGER",
+                    "access_level": "TEXT NOT NULL DEFAULT 'train_visible'",
+                    "metadata_json": "TEXT NOT NULL DEFAULT '{}'",
+                },
+            )
+            self._ensure_columns(
+                connection,
+                "samples",
+                {
+                    "access_level": "TEXT NOT NULL DEFAULT 'train_visible'",
+                    "is_real_spice_call": "INTEGER NOT NULL DEFAULT 1",
+                    "cache_hit_sample_id": "INTEGER",
+                    "backbone_version": "TEXT",
+                    "adapter_version": "TEXT",
+                },
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_samples_access_level ON samples(access_level)"
             )
 
             row = connection.execute("SELECT * FROM dataset_schema WHERE id = 1").fetchone()
@@ -154,6 +199,19 @@ class SamplingHistoryStore:
                     "历史数据库的数据结构与当前电路配置不一致："
                     f"expected={expected}, actual={actual}"
                 )
+
+    @staticmethod
+    def _ensure_columns(
+        connection: sqlite3.Connection,
+        table: str,
+        definitions: Mapping[str, str],
+    ) -> None:
+        existing = {
+            row["name"] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        for name, definition in definitions.items():
+            if name not in existing:
+                connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
 
     def _migrate_legacy_csv(self) -> None:
         with self._connect() as connection:
@@ -273,21 +331,63 @@ class SamplingHistoryStore:
 
         return existing
 
+    def fetch_by_design_keys(
+        self,
+        design_keys: Iterable[str],
+        *,
+        access_levels: Iterable[str] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        unique_keys = list(dict.fromkeys(design_keys))
+        levels = None if access_levels is None else tuple(dict.fromkeys(access_levels))
+        if levels is not None:
+            for level in levels:
+                _validate_access_level(level)
+        result: dict[str, dict[str, Any]] = {}
+        with self._connect() as connection:
+            for start in range(0, len(unique_keys), 850):
+                chunk = unique_keys[start:start + 850]
+                if not chunk:
+                    continue
+                clauses = [f"design_key IN ({','.join('?' for _ in chunk)})"]
+                arguments: list[Any] = list(chunk)
+                if levels is not None:
+                    if not levels:
+                        continue
+                    clauses.append(f"access_level IN ({','.join('?' for _ in levels)})")
+                    arguments.extend(levels)
+                rows = connection.execute(
+                    "SELECT * FROM samples WHERE " + " AND ".join(clauses) + " ORDER BY sample_id",
+                    arguments,
+                ).fetchall()
+                for row in rows:
+                    result[row["design_key"]] = dict(row)
+        return result
+
     def create_run(
         self,
         requested_points: int,
         n_workers: int,
         allocation: Mapping[str, int],
         config: Mapping[str, Any],
+        *,
+        source: str = "batch",
+        task_id: str | None = None,
+        arrival_step: int | None = None,
+        access_level: str = "train_visible",
+        metadata: Mapping[str, Any] | None = None,
     ) -> str:
+        _validate_access_level(access_level)
+        if not source.strip():
+            raise ValueError("source 不能为空")
         run_id = uuid.uuid4().hex
         with self._connect() as connection:
             connection.execute(
                 """
                 INSERT INTO sampling_runs (
                     run_id, started_at, completed_at, status, requested_points,
-                    n_workers, allocation_json, config_json, error_message
-                ) VALUES (?, ?, NULL, 'RUNNING', ?, ?, ?, ?, NULL)
+                    n_workers, allocation_json, config_json, error_message,
+                    source, task_id, arrival_step, access_level, metadata_json
+                ) VALUES (?, ?, NULL, 'RUNNING', ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -296,6 +396,11 @@ class SamplingHistoryStore:
                     n_workers,
                     json.dumps(dict(allocation), ensure_ascii=False, allow_nan=False),
                     json.dumps(dict(config), ensure_ascii=False, allow_nan=False),
+                    source,
+                    task_id,
+                    arrival_step,
+                    access_level,
+                    json.dumps(dict(metadata or {}), ensure_ascii=False, allow_nan=False),
                 ),
             )
         self.logger.info("创建采样运行记录：run_id=%s", run_id)
@@ -329,7 +434,14 @@ class SamplingHistoryStore:
         metrics: np.ndarray,
         sampling_methods: Sequence[str],
         failure_records: Sequence[Mapping[str, Any]],
-    ) -> None:
+        *,
+        access_level: str = "train_visible",
+        is_real_spice_call: bool = True,
+        cache_hit_sample_ids: Sequence[int | None] | None = None,
+        backbone_version: str | None = None,
+        adapter_version: str | None = None,
+    ) -> list[int]:
+        _validate_access_level(access_level)
         design_array = np.asarray(design_parameters, dtype=float)
         metric_array = np.asarray(metrics, dtype=float)
 
@@ -343,31 +455,40 @@ class SamplingHistoryStore:
             raise ValueError("sampling_methods 与样本数量不一致")
         if not np.all(np.isfinite(design_array)):
             raise ValueError("design_parameters 中存在 NaN 或 Inf")
+        if cache_hit_sample_ids is None:
+            cache_hit_sample_ids = [None] * design_array.shape[0]
+        if len(cache_hit_sample_ids) != design_array.shape[0]:
+            raise ValueError("cache_hit_sample_ids 与样本数量不一致")
 
         failure_by_index = {int(record["sample_index"]): record for record in failure_records}
 
+        sample_ids: list[int] = []
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            for sample_index, (design_row, metric_row, method) in enumerate(
-                zip(design_array, metric_array, sampling_methods)
+            for sample_index, (design_row, metric_row, method, cache_hit_sample_id) in enumerate(
+                zip(design_array, metric_array, sampling_methods, cache_hit_sample_ids)
             ):
                 failure = failure_by_index.get(sample_index)
                 stored_metrics = [
                     float(value) if math.isfinite(float(value)) else None
                     for value in metric_row
                 ]
+                # ``success`` keeps its legacy meaning (all requested metrics valid).
+                # Neural readers still consume partial rows through the per-metric mask.
                 success = int(failure is None and all(value is not None for value in stored_metrics))
                 error_type = None if failure is None else str(failure.get("error_type", ""))
                 error_message = None if failure is None else str(failure.get("error", ""))[:20000]
 
                 try:
-                    connection.execute(
+                    cursor = connection.execute(
                         """
                         INSERT INTO samples (
                             run_id, sample_index, sample_method, design_key,
                             design_values_json, metric_values_json, success,
-                            error_type, error_message, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            error_type, error_message, created_at, access_level,
+                            is_real_spice_call, cache_hit_sample_id, backbone_version,
+                            adapter_version
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             run_id,
@@ -380,14 +501,21 @@ class SamplingHistoryStore:
                             error_type,
                             error_message,
                             _utc_now(),
+                            access_level,
+                            int(is_real_spice_call),
+                            cache_hit_sample_id,
+                            backbone_version,
+                            adapter_version,
                         ),
                     )
+                    sample_ids.append(int(cursor.lastrowid))
                 except sqlite3.IntegrityError as exc:
                     raise RuntimeError(
                         "写入历史数据库时发现重复 design point，可能存在并发采样冲突"
                     ) from exc
 
         self.logger.info("批次结果已写入 SQLite：run_id=%s, samples=%d", run_id, len(design_array))
+        return sample_ids
 
     def export_csv(self) -> None:
         with self._connect() as connection:
@@ -410,7 +538,7 @@ class SamplingHistoryStore:
 
         failures = []
         for row in rows:
-            if row["success"]:
+            if row["success"] and not row["error_type"]:
                 continue
             failures.append(
                 {

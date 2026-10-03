@@ -34,6 +34,9 @@ def main(args: argparse.Namespace) -> None:
         simulation_timeout_seconds=args.simulation_timeout_seconds,
         keep_workspace=args.keep_workspace,
         max_duplicate_rounds=args.max_duplicate_rounds,
+        parameter_range_config_path=args.parameter_range_config_path,
+        require_parameter_overrides=not args.allow_global_parameter_ranges,
+        sample_access_level=args.access_level,
     ) as controller:
         result = controller.sample(
             n_points=args.n_points,
@@ -137,6 +140,23 @@ if __name__ == "__main__":
         type=int,
         default=50,
         help="采样点重复时最多补采的轮数。",
+    )
+    arg_parser.add_argument(
+        "--parameter_range_config_path",
+        type=Path,
+        default=None,
+        help="参数范围 JSON；默认使用包内 parameter_ranges.json。",
+    )
+    arg_parser.add_argument(
+        "--allow_global_parameter_ranges",
+        action="store_true",
+        help="允许缺少逐拓扑参数覆盖（仅兼容旧实验；ZeroSim 数据生成不建议使用）。",
+    )
+    arg_parser.add_argument(
+        "--access_level",
+        choices=["train_visible", "hidden_eval", "final_blind"],
+        default="train_visible",
+        help="写入 SQLite 的数据访问分区。",
     )
     arg_parser.add_argument(
         "--n_points",

@@ -16,3 +16,6 @@ __all__ = [
     "Simulator",
     "Sobol_Sampler",
 ]
+from .point_simulation import OBSERVATION_SOURCES, PointSimulationResult, PointSimulator
+
+__all__ += ["OBSERVATION_SOURCES", "PointSimulationResult", "PointSimulator"]
