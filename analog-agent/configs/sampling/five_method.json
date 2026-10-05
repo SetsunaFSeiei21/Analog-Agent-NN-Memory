@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "method_weights": {"random": 0.2, "lhs": 0.2, "sobol": 0.2, "gmid": 0.2, "bayesian": 0.2},
+  "batch_size": 32,
+  "max_proposals_per_point": 2000,
+  "gmid": {
+    "default_range": [8.0, 20.0, 0.5],
+    "group_gmid_overrides": {},
+    "max_solver_evaluations": 120,
+    "solver_tolerance": 0.08,
+    "condition_lengths_on_width": true,
+    "lut": {
+      "vgs": [0.0, 1.8, 0.02], "vds": [0.0, 1.8, 0.05],
+      "reverse_body_bias": [0.0, 1.8, 0.3],
+      "max_lengths": 12, "reference_width_um": 10.0
+    }
+  },
+  "constraints": {"follower_error_max_v": 0.05, "saturation_margin_min_v": 0.0, "min_signal_current_a": 1e-12},
+  "bayesian": {
+    "warmup_points": 32, "candidate_pool_size": 1024, "max_training_points": 256,
+    "length_scale": 0.25, "noise_variance": 0.02, "exploration_fraction": 0.2,
+    "boundary_weight": 0.25, "coverage_weight": 0.2
+  }
+}

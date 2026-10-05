@@ -75,6 +75,7 @@ class SimulationResultError(RuntimeError):
 class SimulationBatchResult:
     metrics: np.ndarray
     failure_records: Tuple[Dict[str, Any], ...]
+    observations: Tuple[Dict[str, Any], ...] = ()
 
 
 class Simulator:
@@ -90,6 +91,7 @@ class Simulator:
         "design_parameters.csv",
         "metrics.csv",
         "simulation_failures.jsonl",
+        ".lut_cache",
     }
 
     def __init__(
@@ -323,15 +325,18 @@ class Simulator:
 
             try:
                 try:
-                    process = subprocess.run(
-                        command,
-                        cwd=sub_workspace,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        timeout=self.timeout_seconds,
-                        check=False,
-                    )
+                    def launch():
+                        return subprocess.run(
+                            command, cwd=sub_workspace, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True,
+                            timeout=self.timeout_seconds, check=False,
+                        )
+                    ledger = getattr(self, "_point_ledger", None)
+                    if ledger is None:
+                        process = launch()
+                    else:
+                        from .advanced.context import record_invocation
+                        process = record_invocation(*ledger, "design", testbench_name, launch)
                 except FileNotFoundError as exc:
                     raise FileNotFoundError(
                         f"未找到 ngspice 命令 {self.ngspice_command!r}，请确认已安装并加入 PATH"
@@ -436,12 +441,26 @@ class Simulator:
         chunk: np.ndarray,
         sample_index_chunk: np.ndarray,
         continue_on_error: bool,
-    ) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
+    ) -> Tuple[np.ndarray, List[Dict[str, Any]], List[Dict[str, Any]]]:
         results: List[np.ndarray] = []
         failures: List[Dict[str, Any]] = []
+        observations: List[Dict[str, Any]] = []
 
         for sample_index, design_parameters in zip(sample_index_chunk, chunk):
             self._rewrite_parameters(sub_workspace, design_parameters)
+            ledger = getattr(self, "invocation_ledger", None)
+            self._point_ledger = None if ledger is None else (*ledger, SamplingHistoryStore.design_key(design_parameters))
+            op_config = getattr(self, "operating_point_config", None)
+            if op_config is not None:
+                from .advanced.operating_point import run_operating_point
+                from ..circuit_ir import resolve_circuit
+                point_names = read_parameter_names(sub_workspace / f"{self.circuit_name}_params.sp")
+                point_ir = resolve_circuit(op_config["circuit"], dict(zip(point_names, design_parameters.tolist())))
+                observations.append(run_operating_point(
+                    sub_workspace, point_ir, op_config["condition"],
+                    op_config["constraints"], op_config["signal_devices"],
+                    self.ngspice_command, self.timeout_seconds, self._point_ledger,
+                ))
             log_paths, testbench_failures = self._run_testbench(sub_workspace, continue_on_error)
             simulation_result, metric_failures = self._read_simulation_result(
                 log_paths,
@@ -475,8 +494,8 @@ class Simulator:
             results.append(simulation_result)
 
         if not results:
-            return np.empty((0, len(self.raw_metrics)), dtype=float), failures
-        return np.vstack(results), failures
+            return np.empty((0, len(self.raw_metrics)), dtype=float), failures, observations
+        return np.vstack(results), failures, observations
 
     def simulate_batch(
         self,
@@ -548,9 +567,9 @@ class Simulator:
                         )
                     worker_results = [future.result() for future in futures]
 
-            result_array = np.vstack([result for result, _ in worker_results])
+            result_array = np.vstack([result for result, _, _ in worker_results])
             failure_records = sorted(
-                [failure for _, failures in worker_results for failure in failures],
+                [failure for _, failures, _ in worker_results for failure in failures],
                 key=lambda record: int(record["sample_index"]),
             )
             if failure_records:
@@ -561,7 +580,8 @@ class Simulator:
                 )
             else:
                 self.logger.info("SPICE 批量仿真完成：samples=%d", design_array.shape[0])
-            return SimulationBatchResult(result_array, tuple(failure_records))
+            observations = tuple(op for _, _, ops in worker_results for op in ops)
+            return SimulationBatchResult(result_array, tuple(failure_records), observations)
         except Exception:
             self.logger.exception("SPICE 批量仿真异常：workspace=%s", run_workspace)
             raise

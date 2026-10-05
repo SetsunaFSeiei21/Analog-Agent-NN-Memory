@@ -19,3 +19,13 @@ __all__ = [
 from .point_simulation import OBSERVATION_SOURCES, PointSimulationResult, PointSimulator
 
 __all__ += ["OBSERVATION_SOURCES", "PointSimulationResult", "PointSimulator"]
+
+__all__ += ["DatasetSamplingController", "DatasetSamplingResult"]
+
+
+def __getattr__(name):
+    if name in {"DatasetSamplingController", "DatasetSamplingResult"}:
+        from .advanced.controller import DatasetSamplingController, DatasetSamplingResult
+        return {"DatasetSamplingController": DatasetSamplingController,
+                "DatasetSamplingResult": DatasetSamplingResult}[name]
+    raise AttributeError(name)

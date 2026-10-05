@@ -11,6 +11,7 @@ import tempfile
 import uuid
 
 from datetime import datetime, timezone
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
@@ -44,6 +45,7 @@ class SamplingHistoryStore:
         parameter_names: Sequence[str],
         metric_names: Sequence[str],
         logger: Optional[logging.Logger] = None,
+        journal_mode: str = "WAL",
     ) -> None:
         self.circuit_path = Path(circuit_path)
         self.circuit_name = circuit_name
@@ -51,6 +53,9 @@ class SamplingHistoryStore:
         self.parameter_names = list(parameter_names)
         self.metric_names = list(metric_names)
         self.logger = logger or logging.getLogger(__name__)
+        if journal_mode not in {"WAL", "DELETE"}:
+            raise ValueError("journal_mode must be WAL or DELETE")
+        self.journal_mode = journal_mode
 
         if not self.parameter_names:
             raise ValueError("parameter_names 不能为空")
@@ -71,13 +76,19 @@ class SamplingHistoryStore:
         self._migrate_legacy_csv()
         self.logger.info("历史数据库已就绪：%s", self.database_path)
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
         connection = sqlite3.connect(self.database_path, timeout=30.0)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute(f"PRAGMA journal_mode = {self.journal_mode}")
+        connection.execute("PRAGMA synchronous = FULL")
         connection.execute("PRAGMA busy_timeout = 30000")
-        return connection
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def _initialize_database(self) -> None:
         with self._connect() as connection:
@@ -131,8 +142,26 @@ class SamplingHistoryStore:
 
                 CREATE INDEX IF NOT EXISTS idx_samples_run_id ON samples(run_id);
                 CREATE INDEX IF NOT EXISTS idx_samples_method ON samples(sample_method);
+
+                CREATE TABLE IF NOT EXISTS sampling_state (
+                    run_id TEXT PRIMARY KEY REFERENCES sampling_runs(run_id),
+                    state_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS spice_invocations (
+                    invocation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    design_key TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    bench TEXT NOT NULL,
+                    status TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_spice_run ON spice_invocations(run_id);
                 """
             )
+
+            self._ensure_columns(connection, "samples", {
+                "observation_json": "TEXT", "proposal_json": "TEXT",
+            })
 
             self._ensure_columns(
                 connection,
@@ -375,6 +404,7 @@ class SamplingHistoryStore:
         arrival_step: int | None = None,
         access_level: str = "train_visible",
         metadata: Mapping[str, Any] | None = None,
+        initial_state: Mapping[str, Any] | None = None,
     ) -> str:
         _validate_access_level(access_level)
         if not source.strip():
@@ -403,6 +433,8 @@ class SamplingHistoryStore:
                     json.dumps(dict(metadata or {}), ensure_ascii=False, allow_nan=False),
                 ),
             )
+            if initial_state is not None:
+                connection.execute("INSERT INTO sampling_state VALUES (?,?)", (run_id, json.dumps(initial_state, allow_nan=False)))
         self.logger.info("创建采样运行记录：run_id=%s", run_id)
         return run_id
 
@@ -440,6 +472,9 @@ class SamplingHistoryStore:
         cache_hit_sample_ids: Sequence[int | None] | None = None,
         backbone_version: str | None = None,
         adapter_version: str | None = None,
+        observations: Sequence[Mapping[str, Any]] | None = None,
+        proposals: Sequence[Mapping[str, Any]] | None = None,
+        next_state: Mapping[str, Any] | None = None,
     ) -> list[int]:
         _validate_access_level(access_level)
         design_array = np.asarray(design_parameters, dtype=float)
@@ -461,10 +496,15 @@ class SamplingHistoryStore:
             raise ValueError("cache_hit_sample_ids 与样本数量不一致")
 
         failure_by_index = {int(record["sample_index"]): record for record in failure_records}
+        if observations is not None and len(observations) != len(design_array):
+            raise ValueError("observations 与样本数量不一致")
+        if proposals is not None and len(proposals) != len(design_array):
+            raise ValueError("proposals 与样本数量不一致")
 
         sample_ids: list[int] = []
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            offset = connection.execute("SELECT COALESCE(MAX(sample_index)+1,0) FROM samples WHERE run_id=?", (run_id,)).fetchone()[0]
             for sample_index, (design_row, metric_row, method, cache_hit_sample_id) in enumerate(
                 zip(design_array, metric_array, sampling_methods, cache_hit_sample_ids)
             ):
@@ -492,7 +532,7 @@ class SamplingHistoryStore:
                         """,
                         (
                             run_id,
-                            sample_index,
+                            sample_index + offset,
                             method,
                             self.design_key(design_row),
                             json.dumps(design_row.tolist(), ensure_ascii=False, allow_nan=False),
@@ -509,10 +549,19 @@ class SamplingHistoryStore:
                         ),
                     )
                     sample_ids.append(int(cursor.lastrowid))
+                    connection.execute("UPDATE samples SET observation_json=?, proposal_json=? WHERE sample_id=?", (
+                        None if observations is None else json.dumps(observations[sample_index], allow_nan=False),
+                        None if proposals is None else json.dumps(proposals[sample_index], allow_nan=False),
+                        cursor.lastrowid,
+                    ))
                 except sqlite3.IntegrityError as exc:
                     raise RuntimeError(
                         "写入历史数据库时发现重复 design point，可能存在并发采样冲突"
                     ) from exc
+
+            if next_state is not None:
+                connection.execute("INSERT OR REPLACE INTO sampling_state VALUES (?,?)",
+                                   (run_id, json.dumps(next_state, allow_nan=False)))
 
         self.logger.info("批次结果已写入 SQLite：run_id=%s, samples=%d", run_id, len(design_array))
         return sample_ids
