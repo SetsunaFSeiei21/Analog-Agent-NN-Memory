@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # 只修改这里：烟测参数和集群配置。
-CIRCUIT_NAME="two_stage_opamp_otaf"
+CIRCUIT_NAME="Opamp1"
 CIRCUIT_TYPE="single_ended_opamp"
-SOURCE_DIR="Sample_Optimizer_Circuit/two_stage_opamp_otaf"
-N_POINTS=64
+SOURCE_DIR="Sample_Optimizer_Circuit/Opamp1"
+N_POINTS=32
 N_WORKERS=8
 METRICS=(DC_GAIN UGF PM CMRR P_PSRR N_PSRR P_SR N_SR POWER)
 SEED=42

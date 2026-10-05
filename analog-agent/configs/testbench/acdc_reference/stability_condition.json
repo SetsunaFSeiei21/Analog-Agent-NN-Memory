@@ -1,0 +1,13 @@
+{
+    "PDK_PATH": "/share/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice",
+    "CORNER": "tt",
+    "TEMP": 27,
+    "VDD": 1.8,
+    "VSS": 0.0,
+    "VCM": 0.9,
+    "CL": "1p",
+    "AC_POINTS_PER_DEC": 10,
+    "AC_START": 0.1,
+    "AC_STOP": "1G",
+    "OUTPUT_PATH": "stability_response.txt"
+}

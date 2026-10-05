@@ -1,287 +1,64 @@
-* ============================================================
-* Generic Single-Ended OpAmp CMRR Testbench
-*
-* Standard DUT interface:
-*
-* .subckt DUT VINP VINN VOUT VDD VSS
-*
-* Metrics:
-*   Differential-Mode Gain  ADM
-*   Common-Mode Gain        ACM
-*   Common-Mode Rejection Ratio CMRR
-*
-* Definition:
-*
-*   VDM  = VINP - VINN
-*
-*   VCM  = (VINP + VINN) / 2
-*
-*   ADM  = VOUT_DM / VDM
-*
-*   ACM  = VOUT_CM / VCM
-*
-*   CMRR = |ADM / ACM|
-*
-* ============================================================
-
-
-* ============================================================
-* PDK / DUT
-* ============================================================
+* Single-ended op-amp CMRR test: ACDC-reference common-mode injection.
+* DUT interface: .subckt DUT VINP VINN VOUT VDD VSS
+* VCMAC_N adds the same 1-V AC signal to OUT_CM, exactly as vcmac2
+* does in the supplied deck. Its 0-V DC drop closes negative feedback.
+* A second DUT measures the inverting gain at the same DC operating point.
+* Recover ADM/ACM so CMRR keeps its repository definition even at low gain.
 
 .lib "{{PDK_PATH}}" {{CORNER}}
-
 .include "{{DUT_PATH}}"
-
-
-* ============================================================
-* Temperature
-* ============================================================
-
 .temp {{TEMP}}
 
-
-* ============================================================
-* Power Supply
-* ============================================================
-
 VDD_SRC VDD 0 DC {{VDD}}
-
 VSS_SRC VSS 0 DC {{VSS}}
 
-
-* ============================================================
-* COMMON-MODE GAIN TEST
-*
-* Both inputs:
-*
-*   DC = VCM
-*   AC = +1 V
-*
-* Therefore:
-*
-*   VDM = 0
-*   VCM(ac) = 1 V
-*
-* LFB_CM:
-*
-*   DC -> short
-*   AC -> approximately open
-*
-* This maintains a valid DC operating point while
-* allowing open-loop common-mode AC measurement.
-* ============================================================
-
-
-* AC master source
-
-VAC_CM CM_AC 0 DC 0 AC 1
-
-
-* DC common-mode references
-
-VCM_CM_P CM_DC_P 0 DC {{VCM}}
-
-VCM_CM_N CM_DC_N 0 DC {{VCM}}
-
-
-* VINP_CM = VCM + 1 * VAC_CM
-
-ECM_P INP_CM CM_DC_P CM_AC 0 1
-
-
-* VINN_CM = VCM + 1 * VAC_CM
-
-ECM_N INN_CM CM_DC_N CM_AC 0 1
-
-
-* DUT
-
-XDUT_CM
-+ INP_CM
-+ INN_CM
-+ OUT_CM
-+ VDD
-+ VSS
-+ DUT
-
-
-* DC feedback / AC isolation
-
-LFB_CM OUT_CM INN_CM 1T
-
-
-* Output load
-
+VCM_DC CM_DC 0 DC {{VCM}}
+VCMAC_P INP_CM CM_DC DC 0 AC 1
+VCMAC_N INN_CM OUT_CM DC 0 AC 1
+XDUT_CM INP_CM INN_CM OUT_CM VDD VSS DUT
 CLOAD_CM OUT_CM VSS {{CL}}
 
-
-
-* ============================================================
-* DIFFERENTIAL-MODE GAIN TEST
-*
-* Master AC source = 1 V
-*
-* VINP:
-*
-*   DC = VCM
-*   AC = +0.5 V
-*
-* VINN:
-*
-*   DC = VCM
-*   AC = -0.5 V
-*
-* Therefore:
-*
-*   VDM(ac) = 1 V
-*   VCM(ac) = 0 V
-*
-* ============================================================
-
-
-* AC master source
-
-VAC_DM DM_AC 0 DC 0 AC 1
-
-
-* DC common-mode references
-
-VCM_DM_P DM_DC_P 0 DC {{VCM}}
-
-VCM_DM_N DM_DC_N 0 DC {{VCM}}
-
-
-* VINP_DM = VCM + 0.5 * VAC_DM
-
-EDM_P INP_DM DM_DC_P DM_AC 0 0.5
-
-
-* VINN_DM = VCM - 0.5 * VAC_DM
-
-EDM_N INN_DM DM_DC_N DM_AC 0 -0.5
-
-
-* DUT
-
-XDUT_DM
-+ INP_DM
-+ INN_DM
-+ OUT_DM
-+ VDD
-+ VSS
-+ DUT
-
-
-* DC feedback / AC isolation
-
+VINP_DM INP_DM 0 DC {{VCM}}
+VINJ_DM SIGNAL_DM 0 DC {{VCM}} AC 1
 LFB_DM OUT_DM INN_DM 1T
-
-
-* Output load
-
+CINJ_DM INN_DM SIGNAL_DM 1T
+XDUT_DM INP_DM INN_DM OUT_DM VDD VSS DUT
 CLOAD_DM OUT_DM VSS {{CL}}
-
-
-
-* ============================================================
-* AC Analysis
-* ============================================================
 
 .ac dec {{AC_POINTS_PER_DEC}} {{AC_START}} {{AC_STOP}}
 
-
-
-* ============================================================
-* Control
-* ============================================================
-
 .control
-
-run
-
 set wr_singlescale
 set wr_vecnames
 option numdgt=15
+op
+let cm_vout_dc = v(OUT_CM)
+let cm_follower_error_v = v(OUT_CM) - v(INP_CM)
+let dm_vout_dc = v(OUT_DM)
+print cm_vout_dc cm_follower_error_v dm_vout_dc
+run
 
-
-
-* ============================================================
-* Differential-Mode Gain
-*
-* VDM = VINP - VINN
-* ============================================================
-
-let vdm = v(INP_DM) - v(INN_DM)
-
-let adm = v(OUT_DM) / vdm
-
-let adm_db = db(adm)
-
-
-
-* ============================================================
-* Common-Mode Gain
-*
-* VCM = (VINP + VINN) / 2
-* ============================================================
-
-let vcm_ac = (v(INP_CM) + v(INN_CM)) / 2
-
-let acm = v(OUT_CM) / vcm_ac
-
-let acm_db = db(acm)
-
-
-
-* ============================================================
-* CMRR
-*
-* CMRR = ADM / ACM
-* ============================================================
-
+* Write VOUT = gp*VINP + gn*VINN.
+* Inverting test: G = -gn. Common-mode test: H = (gp+gn)/(1-gn).
+* Thus ACM = H*(1+G), ADM = G+ACM/2, and CMRR = ADM/ACM.
+let inverting_gain = -v(OUT_DM) / v(INN_DM)
+let common_ripple = v(INP_CM) - v(CM_DC)
+let closed_cm_transfer = v(OUT_CM) / common_ripple
+let acm = closed_cm_transfer * (1 + inverting_gain)
+let adm = inverting_gain + 0.5 * acm
 let cmrr = adm / acm
-
+let adm_db = db(adm)
+let acm_db = db(acm)
 let cmrr_db = db(cmrr)
-
-
-
-* ============================================================
-* Low-Frequency Reference Values
-* ============================================================
-
+let reference_cm_transfer_db = db(closed_cm_transfer)
+let closed_cm_rejection_db = -reference_cm_transfer_db
 meas ac adm_ref_db FIND adm_db AT={{CMRR_MEASURE_FREQ}}
-
 meas ac acm_ref_db FIND acm_db AT={{CMRR_MEASURE_FREQ}}
-
 meas ac cmrr_ref_db FIND cmrr_db AT={{CMRR_MEASURE_FREQ}}
-
-
-
-* ============================================================
-* Output
-* ============================================================
-
-echo ========================================
-echo COMMON-MODE REJECTION RATIO
-echo ========================================
-
-print adm_ref_db
-print acm_ref_db
-print cmrr_ref_db
-
-
-
-* ============================================================
-* Save Full Frequency Response
-* ============================================================
-
-wrdata "{{OUTPUT_PATH}}" adm_db acm_db cmrr_db
-
-
+meas ac reference_cm_response_db FIND reference_cm_transfer_db AT={{CMRR_MEASURE_FREQ}}
+meas ac closed_cm_rejection_ref_db FIND closed_cm_rejection_db AT={{CMRR_MEASURE_FREQ}}
+print adm_ref_db acm_ref_db cmrr_ref_db reference_cm_response_db closed_cm_rejection_ref_db
+wrdata {{OUTPUT_PATH}} adm_db acm_db cmrr_db reference_cm_transfer_db
 quit
-
 .endc
-
-
 .end

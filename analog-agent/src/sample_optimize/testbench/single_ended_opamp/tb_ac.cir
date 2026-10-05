@@ -1,155 +1,48 @@
-* ============================================================
-* Generic Single-Ended OpAmp AC Testbench
-*
-* Standard DUT interface:
-*
-* .subckt DUT VINP VINN VOUT VDD VSS
-*
-* Metrics:
-*   DC Gain
-*   UGF
-*
-* Phase Margin is measured only by tb_stability.cir.
-* ============================================================
-
-
-* ============================================================
-* PDK
-* ============================================================
+* Single-ended op-amp AC test: ACDC-reference feedback/injection circuit.
+* DUT interface: .subckt DUT VINP VINN VOUT VDD VSS
+* DC: LFB closes negative feedback; CINJ is open.
+* AC: LFB is open; CINJ applies 1 V to the inverting input.
+* This matches opout/opout_dc/signal_in in the supplied ACDC deck.
+* Keep signed gain in dB; a negative dB value is not a positive gain.
 
 .lib "{{PDK_PATH}}" {{CORNER}}
-
-
-* ============================================================
-* DUT
-* ============================================================
-
 .include "{{DUT_PATH}}"
-
-
-* ============================================================
-* Simulation Conditions
-* ============================================================
-
 .temp {{TEMP}}
 
-
-* ============================================================
-* Supply
-* ============================================================
-
 VDD_SRC VDD 0 DC {{VDD}}
-
 VSS_SRC VSS 0 DC {{VSS}}
-
-
-* ============================================================
-* Differential AC Excitation
-*
-* VINP = +0.5 V AC
-* VINN = -0.5 V AC
-*
-* Differential AC input:
-*
-* VINP - VINN = 1 V
-* ============================================================
-
-VINP_SRC INP 0 DC {{VCM}} AC 0.5 0
-
-VINN_SRC INN 0 DC {{VCM}} AC 0.5 180
-
-
-* ============================================================
-* DUT
-* ============================================================
-
+VINP_SRC INP 0 DC {{VCM}}
+VINJ SIGNAL_IN 0 DC {{VCM}} AC 1
+LFB OUT INN 1T
+CINJ INN SIGNAL_IN 1T
 XDUT INP INN OUT VDD VSS DUT
-
-
-* ============================================================
-* Output Load
-* ============================================================
-
 CLOAD OUT VSS {{CL}}
-
-
-* ============================================================
-* AC Analysis
-* ============================================================
 
 .ac dec {{AC_POINTS_PER_DEC}} {{AC_START}} {{AC_STOP}}
 
-
-* ============================================================
-* Control
-* ============================================================
-
 .control
-
-run
-
 set wr_singlescale
 set wr_vecnames
 option numdgt=15
+op
+let vout_dc = v(OUT)
+let follower_error_v = v(OUT) - v(INP)
+print vout_dc follower_error_v
+run
 
-
-* ============================================================
-* Open-Loop Gain
-* ============================================================
-
+* Correct the inverting injection sign and normalize by the actual input.
 let differential_input = v(INP) - v(INN)
-
 let open_loop_gain = v(OUT) / differential_input
-
 let gain_db = db(open_loop_gain)
-
 let phase_deg = 180/pi*cph(open_loop_gain)
 
-
-* ============================================================
-* Low-Frequency Gain
-* ============================================================
-
+* Raw ACDC-platform output transfer, for direct comparison with dcgain_.
+let reference_transfer_db = db(v(OUT) / v(SIGNAL_IN))
+meas ac reference_gain_db FIND reference_transfer_db AT={{GAIN_MEASURE_FREQ}}
 meas ac dc_gain_db FIND gain_db AT={{GAIN_MEASURE_FREQ}}
-
-
-* ============================================================
-* Unity-Gain Frequency
-*
-* The measurement fails when the low-frequency gain is below
-* 0 dB or when no falling 0-dB crossing exists. Such a design
-* point is treated as an invalid amplifier sizing.
-* ============================================================
-
 meas ac gbw_hz WHEN gain_db=0 FALL=1
-
-
-* ============================================================
-* Output
-* ============================================================
-
-echo ========================================
-echo AC PERFORMANCE
-echo ========================================
-
-print dc_gain_db
-
-print gbw_hz
-
-
-* ============================================================
-* Save Full AC Response
-*
-* phase_deg is retained only for waveform inspection.
-* It is not used as the final Phase Margin metric.
-* ============================================================
-
-wrdata "{{OUTPUT_PATH}}" gain_db phase_deg
-
-
+print reference_gain_db dc_gain_db gbw_hz
+wrdata {{OUTPUT_PATH}} gain_db phase_deg reference_transfer_db
 quit
-
 .endc
-
-
 .end
