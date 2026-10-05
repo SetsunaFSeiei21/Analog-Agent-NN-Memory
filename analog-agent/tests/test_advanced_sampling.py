@@ -248,13 +248,15 @@ def test_interrupt_during_gmid_generation_keeps_accepted_draft(tmp_path):
         assert original.history_store.design_csv_path.read_bytes() == resumed.history_store.design_csv_path.read_bytes()
 
 
-def test_gmid_coupled_sizing_retains_engineering_grids():
+@pytest.mark.parametrize("sizing_mode", ["nominal_lut", "coupled_lut"])
+def test_gmid_sizing_retains_engineering_grids(sizing_mode):
     ir = parse_circuit(PROJECT / "Sample_Optimizer_Circuit/5t_ota/5t_ota.sp")
     names = list(ir.parameter_defaults)
     bounds = [[1e-7, 20e-6, 1e-7] if n == "IBIAS_A" else [1, 3, 1] if n == "M_FACTOR"
               else [.15, 1., .05] if n.startswith("L") else [1., 10., .1] for n in names]
     domain = DesignDomain(names, bounds)
     config = load_config()["gmid"]
+    config["sizing_mode"] = sizing_mode
     groups, _, targets = make_profile("5t_ota", ir, config)
     metadata = {"length_m": domain.axes[names.index("LIN")]*1e-6,
                 "reverse_body_bias_v": np.linspace(0, 1.8, 7),
@@ -276,7 +278,10 @@ def test_gmid_coupled_sizing_retains_engineering_grids():
             break
     assert accepted is not None
     assert all(np.isclose(value, axis, atol=1e-12, rtol=1e-12).any() for value, axis in zip(accepted, domain.axes))
-    assert info["lut_solver_error"] <= config["solver_tolerance"]
+    if sizing_mode == "coupled_lut":
+        assert info["lut_solver_error"] <= config["solver_tolerance"]
+    else:
+        assert info["lut_solver_error"] is None
     assert all(value in targets[name] for name, value in info["gmid_targets"].items())
     assert info["nominal_reference_current_a"] == accepted[names.index("IBIAS_A")]
 

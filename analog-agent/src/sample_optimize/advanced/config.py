@@ -18,6 +18,7 @@ DEFAULTS = {
         "max_solver_evaluations": 120,
         "solver_tolerance": 0.08,
         "condition_lengths_on_width": True,
+        "sizing_mode": "nominal_lut",
         "lut": {"vgs": [0.0, 1.8, 0.02], "vds": [0.0, 1.8, 0.05],
                 "reverse_body_bias": [0.0, 1.8, 0.3], "max_lengths": 12,
                 "reference_width_um": 10.0},
@@ -80,6 +81,8 @@ def load_config(path=None):
     _positive_int(gmid["max_solver_evaluations"], "max_solver_evaluations")
     if not isinstance(gmid["condition_lengths_on_width"], bool):
         raise ValueError("condition_lengths_on_width must be boolean")
+    if gmid["sizing_mode"] not in {"nominal_lut", "coupled_lut"}:
+        raise ValueError("sizing_mode must be nominal_lut or coupled_lut")
     _positive_int(gmid["lut"]["max_lengths"], "max_lengths")
     for key in ("vgs", "vds", "reverse_body_bias"):
         values = grid(gmid["lut"][key])

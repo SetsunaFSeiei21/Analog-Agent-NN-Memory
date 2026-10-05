@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy.optimize import least_squares
+from scipy.optimize import least_squares, lsq_linear
 
 from ...circuit_ir import resolve_circuit
 from ...circuit_ir.schema import DeviceType
-from .profiles import NODE_SEEDS
+from .profiles import NODE_SEEDS, SIGNAL
 
 
 class GmidSampler:
-    """Sample gm/ID grids, then solve LUT KCL and shared-width constraints.
+    """Sample gm/ID grids and size shared widths from current-density tables.
+
+    Coupled KCL refinement is an optional strict proposal mode.
 
     This is a proposal model, not a substitute for the subsequent BSIM OP.
     L/M/I/passives come from the same physical grid as the other methods.
@@ -127,11 +129,76 @@ class GmidSampler:
                 node_guess[i] = max(0.05, vcm - 0.6)
             elif net in {"N_INPUT_TAIL", "NET9"}:
                 node_guess[i] = min(supply-0.05, vcm+0.6)
+        # Initialize voltage differences from inverse gm/ID, including body
+        # effect. Starting every cascode around VCM can leave it switched off,
+        # where its gm/ID residual has no useful local derivative.
+        node_indices = {net: i for i, net in enumerate(self.nets)}
+        active = [i for i, d in enumerate(self.mos) if i in self.reference_index or d.name.upper() in SIGNAL[self.circuit.source_path.stem]]
+        voltage_equations = []
+        fixed_terms = []
+        fixed = {"VDD": supply, "VSS": 0., "0": -vss, "VINP": vcm}
+        for i in active:
+            coefficients = np.zeros(len(self.nets))
+            constant = 0.
+            for pin, direction in ((self.mos[i].pins[1], signs[i]), (self.mos[i].pins[2], -signs[i])):
+                pin = pin.upper()
+                pin = "VOUT" if pin == "VINN" else pin
+                if pin in node_indices:
+                    coefficients[node_indices[pin]] += direction
+                else:
+                    constant += direction*fixed[pin]
+            voltage_equations.append(coefficients)
+            fixed_terms.append(constant)
+        matrix = np.asarray(voltage_equations)
+        original_seed = node_guess.copy()
+        for _ in range(3):
+            voltage = dict(zip(self.nets, node_guess))
+            voltage.update(fixed)
+            voltage["VINN"] = voltage["VOUT"]
+            predictions = []
+            reference_densities = {}
+            for i in active:
+                device = self.mos[i]
+                drain, gate, source, bulk = (voltage[p.upper()] for p in device.pins)
+                body = np.clip(signs[i]*(source-bulk), 0., supply)
+                vd = np.clip(abs(drain-source), .05, supply)
+                vg = self.lut.axes[2]
+                values = self.lut.lookup(device.device_type.value, length[i], body, vg, vd)
+                ratio = values[:, 1]/np.maximum(values[:, 0], 1e-30)
+                target = chosen[self.groups[width_indices[i]].width]
+                crossing = np.flatnonzero((ratio[:-1] >= target) & (ratio[1:] <= target) & (ratio[:-1] > ratio[1:]) & (values[:-1, 0] > 0))
+                if len(crossing):
+                    j = crossing[-1]
+                    fraction = (ratio[j]-target)/(ratio[j]-ratio[j+1])
+                    predictions.append(vg[j]+fraction*(vg[j+1]-vg[j]))
+                    if i in self.reference_index:
+                        reference_densities[i] = values[j, 0]+fraction*(values[j+1, 0]-values[j, 0])
+                else:
+                    predictions.append(np.clip(signs[i]*(gate-source), .1, supply))
+            node_guess = lsq_linear(np.vstack([matrix, .03*np.eye(len(self.nets))]),
+                                    np.r_[np.asarray(predictions)-fixed_terms, .03*original_seed],
+                                    bounds=(0., supply), tol=1e-5).x
+        if self.config["sizing_mode"] == "nominal_lut":
+            # All five engineering profiles have nominal ID/M=IBIAS at their
+            # reference transistors. Actual branch currents are observed later;
+            # bad OPs remain useful dataset labels rather than being discarded.
+            metadata = {"gmid_targets": chosen, "sizing_mode": "nominal_lut",
+                        "lut_solver_error": None, "nominal_reference_current_a": current_scale,
+                        "conditioned_lengths": conditioned_lengths,
+                        "lut_predicted_nodes_v": dict(zip(self.nets, (node_guess+vss).tolist()))}
+            if len(reference_densities) != len(self.groups):
+                return None, {**metadata, "rejection": "unreachable_bias_gmid"}
+            try:
+                for group, reference in zip(self.groups, self.reference_index):
+                    width = current_scale/reference_densities[reference]*1e6
+                    design[self.domain.names.index(group.width)] = self.domain.quantize_width(group.width, width)
+            except ValueError:
+                return None, {**metadata, "rejection": "width_out_of_range"}
+            return design, metadata
         # Wide solver bounds expose out-of-domain solutions instead of clipping them.
         initial = np.r_[node_guess, np.log(np.clip(guesses, 1e-3, 1e4))]
         lower = np.r_[np.zeros(len(self.nets)), np.full(len(self.groups), np.log(1e-3))]
         upper = np.r_[np.full(len(self.nets), supply), np.full(len(self.groups), np.log(1e4))]
-        node_indices = {net: i for i, net in enumerate(self.nets)}
 
         def residual(x):
             voltages = dict(zip(self.nets, x[:len(self.nets)]))
@@ -183,6 +250,7 @@ class GmidSampler:
                                x_scale="jac", diff_step=1e-4, ftol=1e-5, xtol=1e-5, gtol=1e-5)
         error = float(np.max(abs(residual(result.x))))
         metadata = {"gmid_targets": chosen, "lut_solver_error": error,
+                    "sizing_mode": "coupled_lut",
                     "solver_evaluations": int(result.nfev),
                     "bias_sampling": "lut_width_intersection", "nominal_reference_current_a": current_scale,
                     "conditioned_lengths": conditioned_lengths,

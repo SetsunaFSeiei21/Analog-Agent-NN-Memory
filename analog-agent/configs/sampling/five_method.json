@@ -9,6 +9,7 @@
     "max_solver_evaluations": 120,
     "solver_tolerance": 0.08,
     "condition_lengths_on_width": true,
+    "sizing_mode": "nominal_lut",
     "lut": {
       "vgs": [0.0, 1.8, 0.02], "vds": [0.0, 1.8, 0.05],
       "reverse_body_bias": [0.0, 1.8, 0.3],
