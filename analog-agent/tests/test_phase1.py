@@ -226,6 +226,67 @@ class ControllerIntegrationTest(unittest.TestCase):
             json.dumps(condition), encoding="utf-8"
         )
 
+    def test_partial_or_absent_circuit_overrides_use_generic_ranges(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            config_path = root / "ranges.json"
+            config = {
+                "control_parameter_ranges": {
+                    "W": [1.0, 10.0, 0.1],
+                    "L": [0.15, 5.0, 0.05],
+                    "I": [1e-7, 20e-6, 1e-7],
+                },
+                "device_control_ranges": {"NMOS.W": [1.0, 10.0, 0.01]},
+                "circuit_parameter_overrides": {"demo": {"WN": [2.0, 20.0, 1.0]}},
+            }
+            for case, expected_wn in (
+                ("partial", (2.0, 20.0, 1.0)),
+                ("absent", (1.0, 10.0, 0.1)),
+            ):
+                if case == "absent":
+                    config["circuit_parameter_overrides"] = {}
+                config_path.write_text(json.dumps(config), encoding="utf-8")
+                source = root / f"source_{case}"
+                self._write_circuit(source)
+                with Sampling_Controller(
+                    src_path=source,
+                    circuit_name="demo",
+                    circuit_type="single_ended_opamp",
+                    target_path=root / f"history_{case}",
+                    metrics=["DC_GAIN"],
+                    parameter_range_config_path=config_path,
+                    console_log=False,
+                ) as controller:
+                    bounds = dict(zip(controller.parameter_name_lst, controller.bounds))
+                    self.assertEqual(bounds["WN"], expected_wn)
+                    self.assertEqual(bounds["LN"], (0.15, 5.0, 0.05))
+                    self.assertEqual(bounds["IBIAS_A"], (1e-7, 20e-6, 1e-7))
+
+    def test_circuit_override_rejects_unknown_parameter(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            self._write_circuit(source)
+            config_path = root / "ranges.json"
+            config_path.write_text(json.dumps({
+                "control_parameter_ranges": {
+                    "W": [1.0, 10.0, 0.1],
+                    "L": [0.15, 5.0, 0.05],
+                    "I": [1e-7, 20e-6, 1e-7],
+                },
+                "circuit_parameter_overrides": {"demo": {"WNN": [2.0, 20.0, 1.0]}},
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "未知参数.*WNN"):
+                Sampling_Controller(
+                    src_path=source,
+                    circuit_name="demo",
+                    circuit_type="single_ended_opamp",
+                    target_path=root / "history",
+                    metrics=["DC_GAIN"],
+                    parameter_range_config_path=config_path,
+                    console_log=False,
+                )
+
     def test_controller_samples_twice_without_history_duplicates(self) -> None:
         fake_ngspice = Path(__file__).with_name("fake_ngspice.py").resolve()
         with tempfile.TemporaryDirectory() as temporary_directory:

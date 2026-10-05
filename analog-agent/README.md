@@ -85,5 +85,7 @@ Parser、Parameter Analyzer、Random/LHS/Sobol Sampler、Simulator 和 HistorySt
 ## ZeroSim 神经记忆
 
 ZeroSim 模型、数据协议、R² memory 选择、adapter 适配、consolidation 和盲测运行方式见
-[`docs/zerosim_neural_memory.md`](docs/zerosim_neural_memory.md)。生产数据采样 CLI 默认要求每个拓扑在
-`parameter_ranges.json` 中显式覆盖所有设计参数；旧 Python API 保持兼容。
+[`docs/zerosim_neural_memory.md`](docs/zerosim_neural_memory.md)。采样时，`parameter_ranges.json` 中的
+`circuit_parameter_overrides` 可以只列出某个电路需要特别设定的参数；其余参数直接使用
+`control_parameter_ranges`。如果没有该电路的覆盖条目，则全部使用通用范围。
+`device_control_ranges` 保留给直接调用范围解析函数的代码，不参与采样控制器的回退。

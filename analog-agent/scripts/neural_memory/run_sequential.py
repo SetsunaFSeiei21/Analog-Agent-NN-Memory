@@ -36,7 +36,7 @@ def main() -> None:
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--registry", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--probe-k", type=int, choices=[5, 10, 15, 20, 25], default=20)
+    parser.add_argument("--probe-k", type=int, choices=[20, 40, 60, 80, 100], default=20)
     parser.add_argument("--order-seed", type=int, default=0)
     parser.add_argument("--model-seed", type=int, default=0)
     parser.add_argument("--adaptation-steps", type=int, default=100)

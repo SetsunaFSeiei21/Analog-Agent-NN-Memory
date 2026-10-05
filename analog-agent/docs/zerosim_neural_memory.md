@@ -159,7 +159,7 @@ checkpoint containing the frozen scaler.
 
 For every incoming topology, select K probes using only the order seed. Candidate memories predict those
 same probes. Selection ranks physical-space macro R² first, macro NRMSE only when R² is undefined or tied,
-and finally the registry's stable insertion order. Supported K values are `5, 10, 15, 20, 25`; K=20 is the
+and finally the registry's stable insertion order. Supported K values are `20, 40, 60, 80, 100`; K=60 is the
 primary setting.
 
 ```bash
@@ -168,7 +168,7 @@ python scripts/neural_memory/run_sequential.py \
   --checkpoint checkpoints/zerosim-p0-seed0.pt \
   --registry runs/seed0-order0/memory \
   --output runs/seed0-order0/sequential.json \
-  --probe-k 20 --model-seed 0 --order-seed 0 \
+  --probe-k 60 --model-seed 0 --order-seed 0 \
   --consolidation-interval 5
 ```
 

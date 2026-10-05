@@ -17,13 +17,13 @@ METRIC_NAMES: tuple[str, ...] = (
     "Power_Quiescent_uW",
 )
 METRIC_INDEX = {name: index for index, name in enumerate(METRIC_NAMES)}
-LOG_METRICS = frozenset({
+LOG_METRICS = frozenset({ # frozenset 代表不可变的集合
     "UGF_Hz", "Slew_Rise_V_us", "Slew_Fall_V_us", "Power_Quiescent_uW"
 })
 SLEW_METRICS = frozenset({"Slew_Rise_V_us", "Slew_Fall_V_us"})
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True) # @dataclass(frozen=True) 表示这个数据类的实例创建后，字段不能再被重新赋值，可以理解为“只读数据对象”
 class SampleRecord:
     topology_id: str
     sample_id: int

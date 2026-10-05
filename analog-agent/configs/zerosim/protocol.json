@@ -8,8 +8,8 @@
     "final_blind": 2
   },
   "usable_points_per_topology": 20000,
-  "probe_k": [5, 10, 15, 20, 25],
-  "primary_probe_k": 20,
+  "probe_k": [20, 40, 60, 80, 100], 
+  "primary_probe_k": 60,
   "missing_target_variants": [
     {"name": "masked", "use_loss_mask": true},
     {"name": "sentinel", "use_loss_mask": false, "z_missing": -20.0}

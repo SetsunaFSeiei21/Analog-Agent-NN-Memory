@@ -35,7 +35,6 @@ def main(args: argparse.Namespace) -> None:
         keep_workspace=args.keep_workspace,
         max_duplicate_rounds=args.max_duplicate_rounds,
         parameter_range_config_path=args.parameter_range_config_path,
-        require_parameter_overrides=not args.allow_global_parameter_ranges,
         sample_access_level=args.access_level,
     ) as controller:
         result = controller.sample(
@@ -145,12 +144,7 @@ if __name__ == "__main__":
         "--parameter_range_config_path",
         type=Path,
         default=None,
-        help="参数范围 JSON；默认使用包内 parameter_ranges.json。",
-    )
-    arg_parser.add_argument(
-        "--allow_global_parameter_ranges",
-        action="store_true",
-        help="允许缺少逐拓扑参数覆盖（仅兼容旧实验；ZeroSim 数据生成不建议使用）。",
+        help="参数范围 JSON；电路参数可部分覆盖，其余回退到通用范围。默认使用包内 parameter_ranges.json。",
     )
     arg_parser.add_argument(
         "--access_level",

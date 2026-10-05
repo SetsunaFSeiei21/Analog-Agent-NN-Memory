@@ -170,7 +170,6 @@ class Sampling_Controller:
         keep_workspace: bool = False,
         max_duplicate_rounds: int = 50,
         parameter_range_config_path: Optional[Path] = None,
-        require_parameter_overrides: bool = False,
         sample_access_level: str = "train_visible",
     ) -> None:
         if not isinstance(circuit_name, str) or not circuit_name.strip():
@@ -193,7 +192,6 @@ class Sampling_Controller:
         self.parameter_range_config_path = Path(
             parameter_range_config_path or DEFAULT_PARAMETER_RANGE_CONFIG_PATH
         ).resolve()
-        self.require_parameter_overrides = require_parameter_overrides
         self.sample_access_level = _validate_access_level(sample_access_level)
         self.max_duplicate_rounds = max_duplicate_rounds
         self.log_level = log_level
@@ -233,21 +231,17 @@ class Sampling_Controller:
                 self.circuit_name,
                 logger=analyzer_logger,
             )
-            if self.require_parameter_overrides:
-                expected = {name.casefold(): name for name in self.parameter_name_lst}
-                actual = {name.casefold(): name for name in self.parameter_overrides}
-                missing = sorted(expected[key] for key in set(expected) - set(actual))
-                extra = sorted(actual[key] for key in set(actual) - set(expected))
-                if missing or extra:
-                    raise ValueError(
-                        "ZeroSim 数据生成要求每个拓扑显式覆盖全部参数范围："
-                        f"missing={missing}, extra={extra}"
-                    )
+            expected = {name.casefold() for name in self.parameter_name_lst}
+            extra = sorted(name for name in self.parameter_overrides if name.casefold() not in expected)
+            if extra:
+                raise ValueError(f"电路 {self.circuit_name!r} 的参数覆盖包含未知参数：{extra}")
+            # Sampling uses circuit-specific overrides first, then the generic
+            # W/L/M/R/C/I ranges. Device ranges remain available to other callers
+            # of resolve_parameter_bounds but do not constrain this fallback.
             self.bounds: list[Bounds] = resolve_parameter_bounds(
                 self.parameter_spec_lst,
                 self.control_parameter_ranges,
-                self.device_control_ranges,
-                self.parameter_overrides,
+                parameter_overrides=self.parameter_overrides,
                 logger=analyzer_logger,
             )
 

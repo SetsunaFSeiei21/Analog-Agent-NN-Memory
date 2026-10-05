@@ -19,7 +19,7 @@ from .replay import ReplayBuffer
 from .selection import R2MemorySelector
 
 
-ALLOWED_PROBE_K = frozenset({5, 10, 15, 20, 25})
+ALLOWED_PROBE_K = frozenset({20, 40, 60, 80, 100})
 
 
 def select_probe_indices(
