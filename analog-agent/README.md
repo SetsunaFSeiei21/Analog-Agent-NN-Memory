@@ -1,6 +1,8 @@
 # Analog Agent Phase 1
 
-当前模块完成 Random、LHS、Sobol 参数采样、并行 ngspice 仿真、指标提取和历史数据保存。
+当前模块支持 Random、LHS、Sobol、gm/ID 和带约束贝叶斯五方法采样，
+逐批并行 ngspice 仿真、工作点观测、CSV/SQLite 保存及恢复。
+完整模式配置、器件分组和阅读顺序见 [工程采样文档](docs/engineering_sampling.md)。
 
 ## 输入目录约定
 
@@ -16,14 +18,14 @@ ota5/
 
 目前 `single_ended_opamp` 的 testbench 使用五引脚接口 `.subckt DUT VINP VINN VOUT VDD VSS`。偏置电流源应位于 DUT 内部，并通过参数文件中的 `.param IBIAS_A=10e-6` 控制；默认采样范围为 0.1–20 µA、步长 0.1 µA。六份默认仿真条件 JSON 不再提供 `IBIAS`。已有六引脚电路须调整接口；已有历史库的参数列若发生变化，使用新的电路名称或历史目录。
 
-`Sample_Optimizer_Circuit/5t_ota/` 提供完整示例，包括可采样的偏置电流、偏置管和 OTA 晶体管。电流源是理想直流参考源，电流值以安培表示；仿真供电消耗仍由电源端测得。首次运行会移动输入电路目录，建议先将示例目录复制到工作目录。运行真实 ngspice 前检查条件 JSON 中的 `PDK_PATH` 是否指向本机模型文件。
+`Sample_Optimizer_Circuit/5t_ota/` 提供完整示例，包括可采样的偏置电流、偏置管和 OTA 晶体管。电流源是理想直流参考源，电流值以安培表示；仿真供电消耗仍由电源端测得。五方法模式复制输入目录；原三方法 Python API 和 `legacy` 模式首次运行仍会移动输入目录，因此下面的兼容示例先复制到工作目录。运行真实 ngspice 前检查条件 JSON 中的 `PDK_PATH` 是否指向本机模型文件。
 
 在 `analog-agent/` 目录下试跑：
 
 ```bash
 mkdir -p circuits
 cp -r Sample_Optimizer_Circuit/5t_ota circuits/5t_ota
-python -m src.sample_optimize.sample_only --src_path circuits/5t_ota --circuit_type single_ended_opamp --circuit_name 5t_ota --target_path sampling_database --metrics DC_GAIN UGF PM POWER --n_points 6 --n_workers 1 --keep_workspace
+python -m src.sample_optimize.sample_only --sampling_mode legacy --src_path circuits/5t_ota --circuit_type single_ended_opamp --circuit_name 5t_ota --target_path sampling_database --metrics DC_GAIN UGF PM POWER --n_points 6 --n_workers 1 --keep_workspace
 ```
 
 ## 调用示例

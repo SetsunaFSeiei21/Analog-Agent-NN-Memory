@@ -284,6 +284,7 @@ class Sampling_Controller:
                 parameter_names=self.parameter_name_lst,
                 metric_names=self.simulator.metrics,
                 logger=get_child_logger(self.logger, "history"),
+                journal_mode=getattr(self, "_history_journal_mode", "WAL"),
             )
             self._ensure_circuit_metadata()
             self.logger.info(

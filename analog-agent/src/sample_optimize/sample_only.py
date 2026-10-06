@@ -18,7 +18,15 @@ def main(args: argparse.Namespace) -> None:
         rule_data = json.loads(args.device_rules.read_text(encoding="utf-8"))
         device_rules = tuple(DeviceRule(**rule) for rule in rule_data)
 
-    with Sampling_Controller(
+    controller_class = Sampling_Controller
+    extra = {}
+    if args.sampling_mode == "five":
+        from src.sample_optimize.advanced.controller import DatasetSamplingController
+        controller_class = DatasetSamplingController
+        extra = {"sampling_config_path": args.sampling_config_path, "lut_cache_path": args.lut_cache_path}
+    elif args.resume_run_id or args.sampling_config_path or args.lut_cache_path:
+        raise ValueError("Resume/config/LUT options require --sampling_mode five")
+    with controller_class(
         src_path=args.src_path,
         circuit_name=args.circuit_name,
         circuit_type=args.circuit_type,
@@ -36,11 +44,14 @@ def main(args: argparse.Namespace) -> None:
         max_duplicate_rounds=args.max_duplicate_rounds,
         parameter_range_config_path=args.parameter_range_config_path,
         sample_access_level=args.access_level,
+        **extra,
     ) as controller:
+        resume = {"resume_run_id": args.resume_run_id} if args.sampling_mode == "five" else {}
         result = controller.sample(
             n_points=args.n_points,
             n_workers=args.n_workers,
             continue_on_error=args.continue_on_error,
+            **resume,
         )
 
     print(result)
@@ -48,6 +59,11 @@ def main(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="电路采样与 ngspice 批量仿真")
+    arg_parser.add_argument("--sampling_mode", choices=["five", "legacy"], default="five",
+                            help="默认五方法；legacy 为原 Random/LHS/Sobol 兼容模式。")
+    arg_parser.add_argument("--sampling_config_path", type=Path, help="五方法配置 JSON；默认均为20%%，gm/ID为[8,20,0.5]。")
+    arg_parser.add_argument("--lut_cache_path", type=Path, help="LUT 缓存目录，默认数据库根目录/.lut_cache。")
+    arg_parser.add_argument("--resume_run_id", help="恢复原运行（原 n_points 不变）；可用 latest。")
 
     arg_parser.add_argument(
         "--src_path",
@@ -156,7 +172,7 @@ if __name__ == "__main__":
         "--n_points",
         type=int,
         required=True,
-        help="采样点总数，至少为 3。",
+        help="本轮新增唯一仿真设计数（含失效点）；恢复时必须保持原总数。legacy 至少3。",
     )
     arg_parser.add_argument(
         "--n_workers",

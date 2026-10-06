@@ -394,7 +394,7 @@ class ControllerIntegrationTest(unittest.TestCase):
                 m_index = controller.parameter_name_lst.index("M_FACTOR")
                 self.assertEqual(controller.parameter_spec_lst[m_index].device_type, "MOS")
                 self.assertEqual(controller.parameter_spec_lst[m_index].control_parameter, "M")
-                self.assertEqual(controller.bounds[m_index], (1.0, 10.0, 1.0))
+                self.assertEqual(controller.bounds[m_index], (1.0, 50.0, 1.0))
                 result = controller.sample(n_points=6, n_workers=2)
                 self.assertTrue(result.success)
                 self.assertEqual(result.failed_num, 0)
@@ -416,7 +416,7 @@ class ControllerIntegrationTest(unittest.TestCase):
                                         for value in bias_values))
                     rewritten_m = float(next(line.split("=", 1)[1] for line in params.splitlines()
                                              if line.startswith(".param M_FACTOR=")))
-                    self.assertTrue(rewritten_m.is_integer() and 1 <= rewritten_m <= 10)
+                    self.assertTrue(rewritten_m.is_integer() and 1 <= rewritten_m <= 50)
                     circuit = (workspace / "5t_ota.sp").read_text(encoding="utf-8")
                     self.assertIn("IBIAS_SRC VDD N_BIAS DC {IBIAS_A}", circuit)
                     self.assertIn("m={2*M_FACTOR}", circuit)
@@ -446,7 +446,8 @@ class ControllerIntegrationTest(unittest.TestCase):
                 m_indices = [index for index, spec in enumerate(controller.parameter_spec_lst)
                              if spec.control_parameter == "M"]
                 self.assertEqual(len(m_indices), 2)
-                self.assertTrue(all(controller.bounds[index] == (1.0, 10.0, 1.0) for index in m_indices))
+                self.assertEqual({controller.parameter_name_lst[i]: controller.bounds[i] for i in m_indices},
+                                 {"M1_FACTOR": (1.0, 50.0, 1.0), "M2_FACTOR": (1.0, 10.0, 1.0)})
                 result = controller.sample(n_points=6, n_workers=2, continue_on_error=False)
                 self.assertTrue(result.success)
                 with result.design_csv_path.open(encoding="utf-8") as file:
@@ -455,7 +456,7 @@ class ControllerIntegrationTest(unittest.TestCase):
                 for row in rows:
                     for index in m_indices:
                         m_value = float(row[controller.parameter_name_lst[index]])
-                        self.assertTrue(m_value.is_integer() and 1 <= m_value <= 10)
+                        self.assertTrue(m_value.is_integer() and controller.bounds[index][0] <= m_value <= controller.bounds[index][1])
 
                 workspaces = list((result.target_path / ".workspaces").glob("run_*/workspace_*"))
                 self.assertEqual(len(workspaces), 2)
@@ -466,7 +467,7 @@ class ControllerIntegrationTest(unittest.TestCase):
                         name = controller.parameter_name_lst[index]
                         value = next(float(line.split("=", 1)[1]) for line in params.splitlines()
                                      if line.startswith(f".param {name}="))
-                        self.assertTrue(value.is_integer() and 1 <= value <= 10)
+                        self.assertTrue(value.is_integer() and controller.bounds[index][0] <= value <= controller.bounds[index][1])
                     circuit = (workspace / "two_stage_opamp_otaf.sp").read_text(encoding="utf-8")
                     self.assertIn("m={2*M1_FACTOR}", circuit)
                     self.assertEqual(circuit.count("m={M1_FACTOR}"), 4)
@@ -493,8 +494,8 @@ class ControllerIntegrationTest(unittest.TestCase):
                 m_indices = [index for index, spec in enumerate(controller.parameter_spec_lst)
                              if spec.control_parameter == "M"]
                 self.assertEqual(len(m_indices), 2)
-                self.assertTrue(all(controller.bounds[index] == (1.0, 10.0, 1.0)
-                                    for index in m_indices))
+                self.assertEqual({controller.parameter_name_lst[i]: controller.bounds[i] for i in m_indices},
+                                 {"M1_FACTOR": (1.0, 50.0, 1.0), "M2_FACTOR": (1.0, 10.0, 1.0)})
                 result = controller.sample(n_points=6, n_workers=2, continue_on_error=False)
                 self.assertTrue(result.success)
 
@@ -504,7 +505,7 @@ class ControllerIntegrationTest(unittest.TestCase):
                 for row in rows:
                     for index in m_indices:
                         value = float(row[controller.parameter_name_lst[index]])
-                        self.assertTrue(value.is_integer() and 1 <= value <= 10)
+                        self.assertTrue(value.is_integer() and controller.bounds[index][0] <= value <= controller.bounds[index][1])
 
                 workspaces = list((result.target_path / ".workspaces").glob("run_*/workspace_*"))
                 self.assertEqual(len(workspaces), 2)

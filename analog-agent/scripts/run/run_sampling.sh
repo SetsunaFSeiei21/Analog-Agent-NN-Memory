@@ -57,7 +57,8 @@ flock -n 9 || { echo "[ERROR] 电路 $CIRCUIT_NAME 已有采样任务在运行" 
 HISTORY_DIR="$TARGET_ROOT/$CIRCUIT_NAME"
 if [[ -d "$HISTORY_DIR" ]]; then
     echo "复用历史数据：$HISTORY_DIR"
-    CIRCUIT_SOURCE="$HISTORY_DIR"
+    # Pass the requested source too: dataset mode verifies it against the archive.
+    CIRCUIT_SOURCE="$SOURCE_DIR"
 else
     [[ -d "$SOURCE_DIR" ]] || { echo "[ERROR] 源电路目录不存在：$SOURCE_DIR" >&2; exit 1; }
     SOURCE_DIR="$(cd "$SOURCE_DIR" && pwd)"
@@ -87,9 +88,13 @@ ARGS=(
     --ngspice_command "$NGSPICE"
     --simulation_condition_path "$CONDITIONS"
     --seed "${ANALOG_SEED:-42}"
+    --sampling_mode "${ANALOG_SAMPLING_MODE:-five}"
 )
+if [[ -n "${ANALOG_SAMPLING_CONFIG:-}" ]]; then ARGS+=(--sampling_config_path "$ANALOG_SAMPLING_CONFIG"); fi
+if [[ -n "${ANALOG_LUT_CACHE:-}" ]]; then ARGS+=(--lut_cache_path "$ANALOG_LUT_CACHE"); fi
+if [[ -n "${ANALOG_RESUME_RUN_ID:-}" ]]; then ARGS+=(--resume_run_id "$ANALOG_RESUME_RUN_ID"); fi
 if [[ "${ANALOG_KEEP_WORKSPACE:-0}" == 1 ]]; then ARGS+=(--keep_workspace); fi
-if [[ "${ANALOG_CONTINUE_ON_ERROR:-0}" == 1 ]]; then
+if [[ "${ANALOG_CONTINUE_ON_ERROR:-1}" == 1 ]]; then
     ARGS+=(--continue_on_error)
 else
     ARGS+=(--no-continue_on_error)
