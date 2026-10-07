@@ -3,8 +3,10 @@ from __future__ import annotations
 import fcntl
 import json
 import shutil
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 from scipy.stats import qmc
@@ -19,6 +21,15 @@ from .lut import MosLUT
 from .profiles import make_profile
 
 
+@contextmanager
+def _measure(timings, stage):
+    started = perf_counter()
+    try:
+        yield
+    finally:
+        timings[stage] = timings.get(stage, 0.0) + perf_counter()-started
+
+
 @dataclass(frozen=True)
 class DatasetSamplingResult:
     run_id: str
@@ -30,11 +41,16 @@ class DatasetSamplingResult:
     metric_complete_num: int
     electrically_feasible_num: int
     budgets: dict
+    timings_seconds: dict = field(default_factory=dict)
 
 
 class DatasetSamplingController(Sampling_Controller):
     """Five methods, sequential feedback, context isolation and atomic resume."""
-    def __init__(self, *, sampling_config_path=None, lut_cache_path=None, **kwargs):
+    def __init__(self, *, sampling_config_path=None, lut_cache_path=None, csv_export_interval_batches=10, **kwargs):
+        if (isinstance(csv_export_interval_batches, bool) or
+                not isinstance(csv_export_interval_batches, int) or csv_export_interval_batches < 1):
+            raise ValueError("csv_export_interval_batches must be a positive integer")
+        self.csv_export_interval_batches = csv_export_interval_batches
         self.sampling_config = load_config(sampling_config_path)
         # Rollback journaling avoids WAL shared-memory assumptions on HPC
         # shared storage. Writes are brief and serialized by SQLite.
@@ -83,18 +99,38 @@ class DatasetSamplingController(Sampling_Controller):
             con.execute("INSERT OR REPLACE INTO sampling_state VALUES (?,?)", (run_id, json.dumps(state, allow_nan=False)))
 
     def _observed(self):
-        # Restrict label reads in SQL, before deserialization. Unknown OPs are not negative labels.
+        # Samples are append-only in dataset mode. Load each committed row once,
+        # including on resume; uncommitted drafts never enter the history cache.
+        if not hasattr(self, "_observation_cache"):
+            self._observation_cache = ([], [], set())
+            self._observed_last_id = 0
         with self.history_store._connect() as con:
-            rows = con.execute("SELECT design_values_json,observation_json FROM samples WHERE access_level='train_visible' AND observation_json IS NOT NULL ORDER BY sample_id").fetchall()
-            all_keys = {r[0] for r in con.execute("SELECT design_key FROM samples")}
-        designs, feasible = [], []
+            # SQL only returns labels/designs of accessible, known OPs. Hidden
+            # partitions contribute keys for collision avoidance, never labels.
+            rows = con.execute("""SELECT sample_id, design_key,
+                CASE WHEN access_level='train_visible' AND observation_json IS NOT NULL
+                     THEN design_values_json END,
+                CASE WHEN access_level='train_visible' THEN observation_json END
+                FROM samples WHERE sample_id > ? ORDER BY sample_id""",
+                (self._observed_last_id,)).fetchall()
+        new_designs, new_feasible = [], []
         for row in rows:
-            obs = json.loads(row[1])
-            designs.append(json.loads(row[0]))
-            feasible.append(bool(obs["feasible"]))
-        return designs, feasible, all_keys
+            if row[3] is not None:
+                obs = json.loads(row[3])
+                new_designs.append(json.loads(row[2]))
+                new_feasible.append(bool(obs["feasible"]))
+        designs, feasible, all_keys = self._observation_cache
+        designs.extend(new_designs)
+        feasible.extend(new_feasible)
+        all_keys.update(row[1] for row in rows)
+        if rows:
+            self._observed_last_id = rows[-1][0]
+        # Proposal generation adds draft keys to its local exclusion set. They
+        # must not leak into the committed cache if the result transaction fails.
+        return designs, feasible, all_keys.copy()
 
     def sample(self, n_points, n_workers, continue_on_error=True, *, resume_run_id=None):
+        started = perf_counter()
         if not isinstance(n_workers, int) or isinstance(n_workers, bool) or n_workers <= 0:
             raise ValueError("n_workers must be a positive integer")
         if continue_on_error is not True:
@@ -142,11 +178,16 @@ class DatasetSamplingController(Sampling_Controller):
         gmid = None
         limits = {m: state["proposals"][m] + self.sampling_config["max_proposals_per_point"] * (allocation[m]-state["completed"][m]) for m in METHODS}
         bayesian = ConstrainedBayesianSampler(self.domain, self.sampling_config["bayesian"])
+        timings = {}
+        batch_count = 0
+        export_interval = getattr(self, "csv_export_interval_batches", 10)
         try:
             if allocation["gmid"] > state["completed"]["gmid"]:
-                lut, lut_key = MosLUT.ensure(self.lut_cache_path, self.context, self.domain, self.groups,
-                    self.sampling_config["gmid"]["lut"], self.simulator.ngspice_command,
-                    self.simulator.timeout_seconds, str(self.history_store.database_path), run_id, self.logger)
+                with _measure(timings, "lut"):
+                    lut, lut_key = MosLUT.ensure(self.lut_cache_path, self.context, self.domain, self.groups,
+                        self.sampling_config["gmid"]["lut"], self.simulator.ngspice_command,
+                        self.simulator.timeout_seconds, str(self.history_store.database_path), run_id, self.logger,
+                        workers=n_workers)
                 gmid = GmidSampler(self.ir, self.domain, self.groups, self.gmid_targets, lut,
                                   self.context["conditions"]["power"], self.sampling_config["gmid"])
                 state["lut_key"] = lut_key
@@ -157,80 +198,94 @@ class DatasetSamplingController(Sampling_Controller):
                     draft = state.get("draft")
                     method = draft["method"] if draft else min(remaining, key=lambda m: (state["completed"][m] / allocation[m], METHODS.index(m)))
                     count = draft["count"] if draft else min(self.sampling_config["batch_size"], allocation[method] - state["completed"][method])
-                    designs, feasible, excluded = self._observed()
+                    with _measure(timings, "history_read"):
+                        designs, feasible, excluded = self._observed()
                     points, proposals = (draft["points"], draft["proposals"]) if draft else ([], [])
                     excluded.update(self.history_store.design_key(p) for p in points)
                     state["draft"] = {"method": method, "count": count, "points": points, "proposals": proposals}
                     limit = limits[method]
                     rng = generators[method]
-                    while len(points) < count:
-                        if state["proposals"][method] >= limit:
-                            raise RuntimeError(f"{method} exhausted proposal limit; progress saved. Review domain/LUT/grids or reduce requested quota; no method substitution.")
-                        needed = count-len(points)
-                        metadata = []
-                        if method == "gmid":
-                            point, info = gmid.propose(rng)
-                            state["proposals"][method] += 1
-                            if point is None:
-                                reason = info["rejection"]
-                                state["last_gmid_rejection"] = info
-                                state["rejections"][reason] = state["rejections"].get(reason, 0)+1
-                                if state["proposals"][method] % 100 == 0:
-                                    state["rng"] = {m: gen.bit_generator.state for m, gen in generators.items()}
-                                    self._save_state(run_id, state)
-                                    self.logger.info("gm/ID proposals=%d; accepted draft=%d/%d; latest rejection=%s", state["proposals"][method], len(points), count, reason)
-                                continue
-                            candidates, metadata = [point], [{**info, "lut_key": state["lut_key"]}]
-                        elif method == "bayesian":
-                            candidates, metadata = bayesian.propose(rng, designs, feasible, excluded, needed)
-                            state["proposals"][method] += self.sampling_config["bayesian"]["candidate_pool_size"]
-                        else:
-                            seed = int(rng.integers(0, 2**32))
-                            if method == "sobol":
-                                unit = qmc.Sobol(len(self.domain.names), scramble=True, seed=seed).random_base2(int(np.ceil(np.log2(max(needed, 1)))))
-                            elif method == "lhs":
-                                unit = qmc.LatinHypercube(len(self.domain.names), seed=seed).random(needed)
+                    proposal_started = perf_counter()
+                    before_proposals = state["proposals"][method]
+                    with _measure(timings, "proposal_"+method):
+                        while len(points) < count:
+                            if state["proposals"][method] >= limit:
+                                raise RuntimeError(f"{method} exhausted proposal limit; progress saved. Review domain/LUT/grids or reduce requested quota; no method substitution.")
+                            needed = count-len(points)
+                            metadata = []
+                            if method == "gmid":
+                                point, info = gmid.propose(rng)
+                                state["proposals"][method] += 1
+                                if point is None:
+                                    reason = info["rejection"]
+                                    state["last_gmid_rejection"] = info
+                                    state["rejections"][reason] = state["rejections"].get(reason, 0)+1
+                                    if state["proposals"][method] % 100 == 0:
+                                        state["rng"] = {m: gen.bit_generator.state for m, gen in generators.items()}
+                                        self._save_state(run_id, state)
+                                        self.logger.info("gm/ID proposals=%d; accepted draft=%d/%d; latest rejection=%s; elapsed=%.3fs", state["proposals"][method], len(points), count, reason, perf_counter()-proposal_started)
+                                    continue
+                                candidates, metadata = [point], [{**info, "lut_key": state["lut_key"]}]
+                            elif method == "bayesian":
+                                candidates, metadata = bayesian.propose(rng, designs, feasible, excluded, needed)
+                                state["proposals"][method] += self.sampling_config["bayesian"]["candidate_pool_size"]
                             else:
-                                unit = rng.random((needed, len(self.domain.names)))
-                            candidates = self.domain.project(unit)
-                            state["proposals"][method] += len(candidates)
-                            metadata = [{"proposal_seed": seed}] * len(candidates)
-                        for candidate, info in zip(candidates, metadata):
-                            key = self.history_store.design_key(candidate)
-                            if key in excluded:
-                                state["duplicates"] += 1
-                                continue
-                            excluded.add(key)
-                            points.append(np.asarray(candidate).tolist())
-                            proposals.append(info)
-                            if len(points) == count:
-                                break
+                                seed = int(rng.integers(0, 2**32))
+                                if method == "sobol":
+                                    unit = qmc.Sobol(len(self.domain.names), scramble=True, seed=seed).random_base2(int(np.ceil(np.log2(max(needed, 1)))))
+                                elif method == "lhs":
+                                    unit = qmc.LatinHypercube(len(self.domain.names), seed=seed).random(needed)
+                                else:
+                                    unit = rng.random((needed, len(self.domain.names)))
+                                candidates = self.domain.project(unit)
+                                state["proposals"][method] += len(candidates)
+                                metadata = [{"proposal_seed": seed}] * len(candidates)
+                            for candidate, info in zip(candidates, metadata):
+                                key = self.history_store.design_key(candidate)
+                                if key in excluded:
+                                    state["duplicates"] += 1
+                                    continue
+                                excluded.add(key)
+                                points.append(np.asarray(candidate).tolist())
+                                proposals.append(info)
+                                if len(points) == count:
+                                    break
+                    self.logger.info("Proposal timing: method=%s, accepted=%d, proposals=%d, elapsed=%.3fs",
+                                     method, len(points), state["proposals"][method]-before_proposals, perf_counter()-proposal_started)
                     state["rng"] = {m: gen.bit_generator.state for m, gen in generators.items()}
                     state["draft"] = None
                     state["pending"] = {"method": method, "points": points, "proposals": proposals}
                     self._save_state(run_id, state)  # Before launching: redraws cannot change probes.
                 pending = state["pending"]
                 points = np.asarray(pending["points"])
-                result = self.simulator.simulate_batch(self.src_path, n_workers, points, continue_on_error=True)
+                with _measure(timings, "simulation"):
+                    result = self.simulator.simulate_batch(self.src_path, n_workers, points, continue_on_error=True)
                 if len(result.observations) != len(points):
                     raise RuntimeError("Missing operating-point observations")
                 state["completed"][pending["method"]] += len(points)
                 state["pending"] = None
-                self.history_store.write_batch(run_id, points, result.metrics, [pending["method"]]*len(points), result.failure_records,
-                                              access_level=self.sample_access_level, observations=result.observations,
-                                              proposals=pending["proposals"], next_state=state)
-                self.history_store.export_csv()
+                with _measure(timings, "database_write"):
+                    self.history_store.write_batch(run_id, points, result.metrics, [pending["method"]]*len(points), result.failure_records,
+                                                  access_level=self.sample_access_level, observations=result.observations,
+                                                  proposals=pending["proposals"], next_state=state)
+                batch_count += 1
+                # SQLite commits every batch. CSVs are compatibility snapshots;
+                # avoid repeatedly rewriting the entire growing history.
+                if batch_count % export_interval == 0 and sum(state["completed"].values()) < n_points:
+                    with _measure(timings, "csv_export"):
+                        self.history_store.export_csv()
                 self.logger.info("Five-method progress: %s / %s", state["completed"], allocation)
             with self.history_store._connect() as con:
                 rows = con.execute("SELECT success,observation_json FROM samples WHERE run_id=?", (run_id,)).fetchall()
             complete = sum(row[0] for row in rows)
             good = sum(json.loads(row[1])["feasible"] for row in rows)
             self.history_store.mark_run_completed(run_id, n_points-complete)
-            self.history_store.export_csv()
+            with _measure(timings, "csv_export"):
+                self.history_store.export_csv()
             budgets = self.budget(run_id)
             return DatasetSamplingResult(run_id, self.history_store.database_path,
                 self.history_store.design_csv_path, self.history_store.metrics_csv_path,
-                n_points, allocation, complete, good, budgets)
+                n_points, allocation, complete, good, budgets, timings)
         except BaseException as exc:
             # If a result transaction committed, load it before changing status.
             # The saved pending batch otherwise remains eligible for rerun.
@@ -242,8 +297,12 @@ class DatasetSamplingController(Sampling_Controller):
                     state["rng"] = {m: gen.bit_generator.state for m, gen in generators.items()}
                     self._save_state(run_id, state)
             self.history_store.mark_run_failed(run_id, exc)
-            self.history_store.export_csv()
+            with _measure(timings, "csv_export"):
+                self.history_store.export_csv()
             raise
+        finally:
+            timings["wall"] = perf_counter()-started
+            self.logger.info("Sampling timings (this invocation, seconds): %s", {k: round(v, 3) for k, v in timings.items()})
 
     def budget(self, run_id):
         with self.history_store._connect() as con:

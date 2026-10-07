@@ -23,9 +23,10 @@ def main(args: argparse.Namespace) -> None:
     if args.sampling_mode == "five":
         from src.sample_optimize.advanced.controller import DatasetSamplingController
         controller_class = DatasetSamplingController
-        extra = {"sampling_config_path": args.sampling_config_path, "lut_cache_path": args.lut_cache_path}
-    elif args.resume_run_id or args.sampling_config_path or args.lut_cache_path:
-        raise ValueError("Resume/config/LUT options require --sampling_mode five")
+        extra = {"sampling_config_path": args.sampling_config_path, "lut_cache_path": args.lut_cache_path,
+                 "csv_export_interval_batches": args.csv_export_interval_batches if args.csv_export_interval_batches is not None else 10}
+    elif args.resume_run_id or args.sampling_config_path or args.lut_cache_path or args.csv_export_interval_batches is not None:
+        raise ValueError("Resume/config/LUT/CSV options require --sampling_mode five")
     with controller_class(
         src_path=args.src_path,
         circuit_name=args.circuit_name,
@@ -62,7 +63,9 @@ if __name__ == "__main__":
     arg_parser.add_argument("--sampling_mode", choices=["five", "legacy"], default="five",
                             help="默认五方法；legacy 为原 Random/LHS/Sobol 兼容模式。")
     arg_parser.add_argument("--sampling_config_path", type=Path, help="五方法配置 JSON；默认均为20%%，gm/ID为[8,20,0.5]。")
-    arg_parser.add_argument("--lut_cache_path", type=Path, help="LUT 缓存目录，默认数据库根目录/.lut_cache。")
+    arg_parser.add_argument("--lut_cache_path", type=Path, help="LUT 缓存目录，默认数据库根目录/.lut_cache；首次建表也使用 n_workers。")
+    arg_parser.add_argument("--csv_export_interval_batches", type=int,
+                            help="五方法每多少批导出 CSV，默认10；设1每批导出。SQLite 每批提交，结束/异常时强制导出。")
     arg_parser.add_argument("--resume_run_id", help="恢复原运行（原 n_points 不变）；可用 latest。")
 
     arg_parser.add_argument(
@@ -178,7 +181,7 @@ if __name__ == "__main__":
         "--n_workers",
         type=int,
         required=True,
-        help="并行仿真的工作进程数。",
+        help="并发 ngspice 数量上限；五方法的 LUT 建表同样使用此值。",
     )
     arg_parser.add_argument(
         "--continue_on_error",

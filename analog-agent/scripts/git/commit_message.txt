@@ -1,1 +1,1 @@
-加入了贝叶斯采样和gm/id采样
+对gm/id进行加速，适应num_workers

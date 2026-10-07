@@ -7,9 +7,12 @@ import shutil
 import subprocess
 import tempfile
 
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
+from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
+from queue import Empty, SimpleQueue
+from time import perf_counter
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -269,8 +272,7 @@ class Simulator:
 
     def _rewrite_parameters(self, sub_workspace: Path, design_parameters: np.ndarray) -> None:
         workspace_param_path = sub_workspace / f"{self.circuit_name}_params.sp"
-        # 本方法运行在子进程中，不向主进程的 RotatingFileHandler 写日志，
-        # 避免多个进程同时轮转同一个日志文件。
+        # Workspace 由一个 worker 独占；参数改写不输出逐参数日志。
         parameter_names = read_parameter_names(workspace_param_path)
         values = np.asarray(design_parameters, dtype=float)
         if values.ndim != 1 or len(values) != len(parameter_names):
@@ -309,6 +311,7 @@ class Simulator:
         failures: List[Dict[str, Any]] = []
 
         for testbench_name in self._get_testbench_name_lst():
+            started = perf_counter()
             testbench_path = sub_workspace / f"tb_{testbench_name}.cir"
             if not testbench_path.is_file():
                 raise FileNotFoundError(f"Workspace 中不存在 Testbench：{testbench_path}")
@@ -385,6 +388,10 @@ class Simulator:
                         "error": str(exc),
                     }
                 )
+            finally:
+                elapsed = perf_counter()-started
+                log = self.logger.info if elapsed >= 10 else self.logger.debug
+                log("SPICE bench timing: bench=%s, elapsed=%.3fs, workspace=%s", testbench_name, elapsed, sub_workspace)
 
         return log_paths, failures
 
@@ -447,6 +454,7 @@ class Simulator:
         observations: List[Dict[str, Any]] = []
 
         for sample_index, design_parameters in zip(sample_index_chunk, chunk):
+            point_started = perf_counter()
             self._rewrite_parameters(sub_workspace, design_parameters)
             ledger = getattr(self, "invocation_ledger", None)
             self._point_ledger = None if ledger is None else (*ledger, SamplingHistoryStore.design_key(design_parameters))
@@ -461,6 +469,9 @@ class Simulator:
                     op_config["constraints"], op_config["signal_devices"],
                     self.ngspice_command, self.timeout_seconds, self._point_ledger,
                 ))
+                elapsed = perf_counter()-point_started
+                log = self.logger.info if elapsed >= 10 else self.logger.debug
+                log("SPICE OP timing: sample_index=%d, elapsed=%.3fs, workspace=%s", sample_index, elapsed, sub_workspace)
             log_paths, testbench_failures = self._run_testbench(sub_workspace, continue_on_error)
             simulation_result, metric_failures = self._read_simulation_result(
                 log_paths,
@@ -492,10 +503,28 @@ class Simulator:
                     }
                 )
             results.append(simulation_result)
+            self.logger.debug("SPICE point timing: sample_index=%d, elapsed=%.3fs, workspace=%s",
+                              sample_index, perf_counter()-point_started, sub_workspace)
 
         if not results:
             return np.empty((0, len(self.raw_metrics)), dtype=float), failures, observations
         return np.vstack(results), failures, observations
+
+    def _simulate_queue(self, sub_workspace, design_array, jobs, continue_on_error):
+        # ngspice runs in separate processes; threads schedule them without
+        # repeatedly spawning Python workers or pickling circuit objects.
+        # Mutable per-point ledger state stays on this workspace's worker copy.
+        worker = copy(self)
+        results = []
+        while True:
+            try:
+                index = jobs.get_nowait()
+            except Empty:
+                break
+            result = worker._simulate_chunk(sub_workspace, design_array[index:index+1],
+                                            np.asarray([index]), continue_on_error)
+            results.append((index, result))
+        return results
 
     def simulate_batch(
         self,
@@ -528,6 +557,7 @@ class Simulator:
             raise ValueError("design_parameters_array 中存在 NaN 或 Inf")
 
         effective_workers = min(n_workers, design_array.shape[0])
+        started = perf_counter()
         run_workspace = Path(tempfile.mkdtemp(prefix="run_", dir=self.workspace_root))
         self.logger.info(
             "开始 SPICE 批量仿真：samples=%d, workers=%d, workspace=%s",
@@ -540,32 +570,25 @@ class Simulator:
             self._generate_workspace(run_workspace, effective_workers)
             self._copy_circuit(circuit_path, run_workspace)
             self._generate_testbench_copy(run_workspace)
-            design_chunks = np.array_split(design_array, effective_workers)
-            index_chunks = np.array_split(np.arange(design_array.shape[0]), effective_workers)
-
             if effective_workers == 1:
                 worker_results = [
                     self._simulate_chunk(
                         run_workspace / "workspace_0",
-                        design_chunks[0],
-                        index_chunks[0],
+                        design_array,
+                        np.arange(design_array.shape[0]),
                         continue_on_error,
                     )
                 ]
             else:
-                futures = []
-                with ProcessPoolExecutor(max_workers=effective_workers) as executor:
-                    for worker_id, (chunk, index_chunk) in enumerate(zip(design_chunks, index_chunks)):
-                        futures.append(
-                            executor.submit(
-                                self._simulate_chunk,
-                                run_workspace / f"workspace_{worker_id}",
-                                chunk,
-                                index_chunk,
-                                continue_on_error,
-                            )
-                        )
-                    worker_results = [future.result() for future in futures]
+                jobs = SimpleQueue()
+                for index in range(len(design_array)):
+                    jobs.put(index)
+                with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+                    futures = [executor.submit(self._simulate_queue, run_workspace / f"workspace_{i}",
+                                               design_array, jobs, continue_on_error) for i in range(effective_workers)]
+                    # Completion order never changes design/metric/OP pairing.
+                    ordered = sorted((item for future in futures for item in future.result()), key=lambda item: item[0])
+                    worker_results = [result for _, result in ordered]
 
             result_array = np.vstack([result for result, _, _ in worker_results])
             failure_records = sorted(
@@ -586,6 +609,8 @@ class Simulator:
             self.logger.exception("SPICE 批量仿真异常：workspace=%s", run_workspace)
             raise
         finally:
+            self.logger.info("SPICE batch timing: samples=%d, workers=%d, elapsed=%.3fs",
+                             len(design_array), effective_workers, perf_counter()-started)
             if self.keep_workspace:
                 self.logger.info("保留仿真 workspace：%s", run_workspace)
             else:

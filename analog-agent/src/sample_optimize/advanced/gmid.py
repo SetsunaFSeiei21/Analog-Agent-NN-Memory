@@ -24,6 +24,31 @@ class GmidSampler:
         self.nets = sorted({p.upper() for d in circuit.devices for p in d.pins} - {"VINP", "VINN", "VDD", "VSS", "0"})
         self.width_group = {m: i for i, g in enumerate(groups) for m in g.members}
         self.reference_index = [next(i for i, d in enumerate(self.mos) if d.name.upper() == g.reference) for g in groups]
+        self._initial_curves = {}
+        self._length_tables = {}
+
+    def _initial_curve(self, kind, length, diode, supply):
+        key = (kind, float(length), diode, min(.9, supply))
+        if key not in self._initial_curves:
+            vg = self.lut.axes[2]
+            values = self.lut.lookup(kind, length, 0., vg, vg if diode else min(.9, supply))
+            ratio = values[:, 1] / np.maximum(values[:, 0], 1e-30)
+            values.setflags(write=False)
+            ratio.setflags(write=False)
+            self._initial_curves[key] = values, ratio
+        return self._initial_curves[key]
+
+    def _length_table(self, kind, parameter, supply):
+        key = (kind, parameter, min(.9, supply))
+        if key not in self._length_tables:
+            axis = self.domain.axes[self.domain.names.index(parameter)]
+            vg = self.lut.axes[2]
+            values = self.lut.lookup(kind, axis[:, None], 0., vg[None, :], min(.9, supply))
+            ratio = values[..., 1] / np.maximum(values[..., 0], 1e-30)
+            values.setflags(write=False)
+            ratio.setflags(write=False)
+            self._length_tables[key] = values, ratio
+        return self._length_tables[key]
 
     def propose(self, rng):
         design = self.domain.random(rng, 1)[0]
@@ -55,8 +80,7 @@ class GmidSampler:
             bias_reference = direct_diode and any(
                 d.device_type == DeviceType.CURRENT_SOURCE and bias_net in {p.upper() for p in d.pins}
                 for d in self.circuit.devices)
-            values = self.lut.lookup(kind, length[reference], 0., vg, vg if bias_reference else min(0.9, supply))
-            ratio = values[:, 1] / np.maximum(values[:, 0], 1e-30)
+            values, ratio = self._initial_curve(kind, length[reference], bias_reference, supply)
             roots = []
             target = chosen[group.width]
             for i in range(len(vg)-1):
@@ -94,10 +118,10 @@ class GmidSampler:
         if conditioned_lengths:
             for group_index, (group, reference) in enumerate(zip(self.groups[1:], self.reference_index[1:]), 1):
                 axis = self.domain.axes[self.domain.names.index(group.length)]
-                vg = self.lut.axes[2]
                 kind = self.mos[reference].device_type.value
-                values = self.lut.lookup(kind, axis[:, None], 0., vg[None, :], min(.9, supply))
-                ratio = values[..., 1] / np.maximum(values[..., 0], 1e-30)
+                # These zero-body/fixed-VDS curves depend only on the frozen
+                # domain and LUT, not on a proposal's current or gm/ID target.
+                values, ratio = self._length_table(kind, group.length, supply)
                 target = chosen[group.width]
                 crossing = (ratio[:, :-1] >= target) & (ratio[:, 1:] <= target) & (ratio[:, :-1] > ratio[:, 1:]) & (values[:, :-1, 0] > 0)
                 valid = crossing.any(axis=1)

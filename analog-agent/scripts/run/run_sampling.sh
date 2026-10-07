@@ -93,6 +93,7 @@ ARGS=(
 if [[ -n "${ANALOG_SAMPLING_CONFIG:-}" ]]; then ARGS+=(--sampling_config_path "$ANALOG_SAMPLING_CONFIG"); fi
 if [[ -n "${ANALOG_LUT_CACHE:-}" ]]; then ARGS+=(--lut_cache_path "$ANALOG_LUT_CACHE"); fi
 if [[ -n "${ANALOG_RESUME_RUN_ID:-}" ]]; then ARGS+=(--resume_run_id "$ANALOG_RESUME_RUN_ID"); fi
+if [[ -n "${ANALOG_CSV_EXPORT_INTERVAL_BATCHES:-}" ]]; then ARGS+=(--csv_export_interval_batches "$ANALOG_CSV_EXPORT_INTERVAL_BATCHES"); fi
 if [[ "${ANALOG_KEEP_WORKSPACE:-0}" == 1 ]]; then ARGS+=(--keep_workspace); fi
 if [[ "${ANALOG_CONTINUE_ON_ERROR:-1}" == 1 ]]; then
     ARGS+=(--continue_on_error)
