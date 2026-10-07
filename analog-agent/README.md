@@ -3,6 +3,7 @@
 当前模块支持 Random、LHS、Sobol、gm/ID 和带约束贝叶斯五方法采样，
 逐批并行 ngspice 仿真、工作点观测、CSV/SQLite 保存及恢复。
 完整模式配置、器件分组和阅读顺序见 [工程采样文档](docs/engineering_sampling.md)。
+每个设计点的全部 MOS 静态工作点、宽表列和数据库关联见 [DC 工作点说明](docs/dc_operating_points.md)。
 
 ## 输入目录约定
 
@@ -66,6 +67,7 @@ circuit_name/
 ├── sampling_history.sqlite3
 ├── design_parameters.csv
 ├── metrics.csv
+├── dc_operating_points.csv
 ├── simulation_failures.jsonl
 └── logs/
     └── sampling.log
@@ -73,7 +75,8 @@ circuit_name/
 
 - `sampling_history.sqlite3` 是唯一可信数据源，使用事务保存运行记录和采样结果；
 - `circuit_metadata.json` 记录 `circuit_name` 和 `circuit_type`；首次采样时创建，已有历史目录缺失时自动补建，配置不一致时报错；
-- 两个 CSV 由 SQLite 原子导出，用于兼容训练代码；
+- 三个 CSV 由 SQLite 导出，设计、指标、全部 MOS 工作点按行对应；神经训练仍以 SQLite 为数据源；
+- `dc_operating_points.csv` 为每个设计点一行的宽表，列如 `XMN_INP.gm_s`、`XMN_INP.vgs_v`、`XMN_INP.cgs_f`；
 - 启用 `continue_on_error` 后按指标保存部分结果：已成功提取的有限值会保留，仅缺失或失败的指标写为 `NaN`；
 - 含有任意 `NaN` 的设计点仍会保存，但标记为 `success=0`，失败摘要写入 `simulation_failures.jsonl`；
 - 已存在的旧双 CSV 会在首次运行时自动迁移；

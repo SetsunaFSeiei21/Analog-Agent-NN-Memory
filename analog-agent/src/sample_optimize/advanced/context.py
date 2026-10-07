@@ -9,6 +9,11 @@ import os
 from contextlib import closing
 from pathlib import Path
 
+from ..operating_point_contract import OP_SCHEMA_VERSION
+
+# Version 1's verified collector. Its bias deck and feasibility definitions
+# are preserved by the version-2 field-only upgrade.
+LEGACY_OP_IMPLEMENTATION = "04e33a61ef7d0beeef60db54707cd783f08a21c4755603e830f4d7aa2fadb1d3"
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, allow_nan=False).encode()).hexdigest()
@@ -62,6 +67,25 @@ def model_identity(paths):
     return hashes
 
 
+def resolve_mos_primitives(models, required_models=("sky130_fd_pr__nfet_01v8", "sky130_fd_pr__pfet_01v8")):
+    primitives = {}
+    required = set(required_models)
+    for file in models:
+        content = Path(file).read_text(errors="replace")
+        for model in required:
+            match = re.search(rf"(?ims)^\s*\.subckt\s+{re.escape(model)}\s+.*?\n(.*?)^\s*\.ends\b", content)
+            if match:
+                instance = re.search(r"(?im)^\s*(m\w+)\s+", match[1])
+                if instance:
+                    found = instance[1].lower()
+                    if model in primitives and primitives[model] != found:
+                        raise ValueError(f"Ambiguous primitive instance for {model}")
+                    primitives[model] = found
+    if set(primitives) != required:
+        raise ValueError("Cannot resolve Sky130 MOS primitive names from the PDK include closure")
+    return primitives
+
+
 def simulation_context(source, name, simulator):
     conditions, templates = {}, {}
     for bench in simulator._get_testbench_name_lst():
@@ -82,25 +106,13 @@ def simulation_context(source, name, simulator):
     if os.environ.get("SPICE_SCRIPTS"):
         initialization_files.append(Path(os.environ["SPICE_SCRIPTS"]) / "spinit")
     global_initialization = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in initialization_files if p.is_file()}
-    primitives = {}
-    for file in models:
-        content = Path(file).read_text(errors="replace")
-        for model in ("sky130_fd_pr__nfet_01v8", "sky130_fd_pr__pfet_01v8"):
-            match = re.search(rf"(?ims)^\s*\.subckt\s+{model}\s+.*?\n(.*?)^\s*\.ends\b", content)
-            if match:
-                instance = re.search(r"(?im)^\s*(m\w+)\s+", match[1])
-                if instance:
-                    found = instance[1].lower()
-                    if model in primitives and primitives[model] != found:
-                        raise ValueError(f"Ambiguous primitive instance for {model}")
-                    primitives[model] = found
-    if len(primitives) != 2:
-        raise ValueError("Cannot resolve Sky130 NMOS/PMOS primitive names from the PDK include closure")
+    primitives = resolve_mos_primitives(models)
     return {"schema_version": 1, "source": source_identity(source, name), "templates": templates,
             "initialization": (Path(source) / ".spiceinit").read_text() if (Path(source) / ".spiceinit").exists() else "",
             "global_initialization": global_initialization,
             "spice_scripts": os.environ.get("SPICE_SCRIPTS"),
             "op_implementation": hashlib.sha256(Path(__file__).with_name("operating_point.py").read_bytes()).hexdigest(),
+            "op_schema_version": OP_SCHEMA_VERSION,
             "conditions": conditions, "models": models, "mos_primitives": primitives,
             "ngspice_version": version.stdout + version.stderr,
             "units": "W,L:um; Sky130 scale=1u; electrical:SI"}
@@ -115,7 +127,17 @@ def bind_context(database, context):
         if old is None and count:
             raise ValueError("Existing history has no verified simulation context. Preserve it and choose a new target directory; legacy labels cannot warm-start this run.")
         if old is not None and old[0] != fingerprint:
-            raise ValueError("Simulation context changed (netlist/testbench/PDK/conditions/ngspice). Preserve the history and choose a new target directory.")
+            previous = json.loads(con.execute("SELECT context_json FROM sampling_context WHERE id=1").fetchone()[0])
+            ignored = {"op_implementation", "op_schema_version"}
+            compatible = (previous.get("op_implementation") == LEGACY_OP_IMPLEMENTATION
+                          and previous.get("op_schema_version", 1) == 1
+                          and context.get("op_schema_version") == 2
+                          and {k: v for k, v in previous.items() if k not in ignored}
+                          == {k: v for k, v in context.items() if k not in ignored})
+            if not compatible:
+                raise ValueError("Simulation context changed (netlist/testbench/PDK/conditions/ngspice). Preserve the history and choose a new target directory.")
+            con.execute("UPDATE sampling_context SET fingerprint=?,context_json=? WHERE id=1",
+                        (fingerprint, json.dumps(context, sort_keys=True)))
         con.execute("INSERT OR IGNORE INTO sampling_context VALUES (1,?,?)", (fingerprint, json.dumps(context, sort_keys=True)))
     return fingerprint
 

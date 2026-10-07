@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, SimpleQueue
 from time import perf_counter
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -93,6 +93,7 @@ class Simulator:
         "sampling_history.sqlite3-wal",
         "design_parameters.csv",
         "metrics.csv",
+        "dc_operating_points.csv",
         "simulation_failures.jsonl",
         ".lut_cache",
     }
@@ -184,6 +185,51 @@ class Simulator:
             if testbench_name not in result:
                 result.append(testbench_name)
         return result
+
+    def _prepare_operating_point_config(self, circuit_path: Path) -> None:
+        """Also capture OP for legacy sampling and standalone point requests.
+
+        Dataset mode supplies its verified configuration. Other callers prefer
+        power_condition.json; an AC-family condition can anchor the same DC
+        follower if only a metric subset's condition files were supplied.
+        """
+        if getattr(self, "operating_point_config", None) is not None and not hasattr(self, "_automatic_op_signature"):
+            return
+        from ..circuit_ir import parse_circuit
+        from .advanced.context import model_identity, resolve_mos_primitives, source_identity
+
+        power = self.simulate_condition_path / "power_condition.json"
+        candidates = [power] + [self.simulate_condition_path / f"{bench}_condition.json"
+                                for bench in self._get_testbench_name_lst() if bench in {"ac", "stability", "cmrr", "psrr"}]
+        condition_file = next((path for path in candidates if path.is_file()), power)
+        condition_text = condition_file.read_text() if condition_file.is_file() else "{}"
+        signature = (str(Path(circuit_path).resolve()), source_identity(circuit_path, self.circuit_name), condition_text)
+        if (signature == getattr(self, "_automatic_op_signature", None)
+                and "configuration_error" not in self.operating_point_config):
+            return
+        circuit = None
+        config = {"constraints": {}, "signal_devices": ()}
+        condition = {}
+        try:
+            circuit = parse_circuit(Path(circuit_path) / f"{self.circuit_name}.sp")
+            if not condition_file.is_file():
+                raise FileNotFoundError("DC capture needs power_condition.json or an AC-family condition")
+            condition = json.loads(condition_text)
+            if not isinstance(condition, dict):
+                raise ValueError("DC capture condition must be a JSON object")
+            required = {"PDK_PATH", "CORNER", "TEMP", "VDD", "VSS", "VCM"}
+            if required - condition.keys():
+                raise ValueError(f"DC capture condition is missing {sorted(required-condition.keys())}")
+            models = model_identity([condition["PDK_PATH"]])
+            wrappers = {d.model.lower() for d in circuit.devices if d.name.lower().startswith("x")}
+            condition = {**condition, "MOS_PRIMITIVES": resolve_mos_primitives(models, wrappers)}
+        except (OSError, ValueError) as exc:
+            config["configuration_error"] = f"op_configuration:{type(exc).__name__}:{exc}"
+            self.logger.warning("DC operating-point capture configuration: %s", exc)
+        config["condition"] = condition if isinstance(condition, dict) else {}
+        config["circuit"] = circuit
+        self.operating_point_config = config
+        self._automatic_op_signature = signature
 
     @staticmethod
     def _generate_workspace(run_workspace: Path, n_workers: int) -> None:
@@ -460,15 +506,20 @@ class Simulator:
             self._point_ledger = None if ledger is None else (*ledger, SamplingHistoryStore.design_key(design_parameters))
             op_config = getattr(self, "operating_point_config", None)
             if op_config is not None:
-                from .advanced.operating_point import run_operating_point
+                from .advanced.operating_point import empty_observation, run_operating_point
                 from ..circuit_ir import resolve_circuit
                 point_names = read_parameter_names(sub_workspace / f"{self.circuit_name}_params.sp")
-                point_ir = resolve_circuit(op_config["circuit"], dict(zip(point_names, design_parameters.tolist())))
-                observations.append(run_operating_point(
-                    sub_workspace, point_ir, op_config["condition"],
-                    op_config["constraints"], op_config["signal_devices"],
-                    self.ngspice_command, self.timeout_seconds, self._point_ledger,
-                ))
+                point_ir = (None if op_config["circuit"] is None else
+                            resolve_circuit(op_config["circuit"], dict(zip(point_names, design_parameters.tolist()))))
+                if "configuration_error" in op_config:
+                    observation = empty_observation(point_ir, op_config["condition"], op_config["configuration_error"])
+                else:
+                    observation = run_operating_point(
+                        sub_workspace, point_ir, op_config["condition"],
+                        op_config["constraints"], op_config["signal_devices"],
+                        self.ngspice_command, self.timeout_seconds, self._point_ledger,
+                    )
+                observations.append(observation)
                 elapsed = perf_counter()-point_started
                 log = self.logger.info if elapsed >= 10 else self.logger.debug
                 log("SPICE OP timing: sample_index=%d, elapsed=%.3fs, workspace=%s", sample_index, elapsed, sub_workspace)
@@ -556,6 +607,8 @@ class Simulator:
         if not np.all(np.isfinite(design_array)):
             raise ValueError("design_parameters_array 中存在 NaN 或 Inf")
 
+        self._prepare_operating_point_config(circuit_path)
+
         effective_workers = min(n_workers, design_array.shape[0])
         started = perf_counter()
         run_workspace = Path(tempfile.mkdtemp(prefix="run_", dir=self.workspace_root))
@@ -624,18 +677,23 @@ class Simulator:
         design_parameters_array: np.ndarray,
         continue_on_error: bool = False,
     ) -> np.ndarray:
-        return self.simulate_batch(
+        result = self.simulate_batch(
             circuit_path,
             n_workers,
             design_parameters_array,
             continue_on_error,
-        ).metrics
+        )
+        parameter_names = read_parameter_names(Path(circuit_path) / f"{self.circuit_name}_params.sp")
+        self._legacy_simulation = (np.asarray(design_parameters_array).copy(), tuple(parameter_names), result)
+        return result.metrics
 
     def write_simulate_result(
         self,
         design_parameters: np.ndarray,
         metrics: np.ndarray,
         design_parameter_name_lst: Optional[List[str]] = None,
+        *,
+        observations: Optional[Sequence[Mapping[str, Any]]] = None,
     ) -> None:
         """兼容旧接口；新 Controller 直接使用 SamplingHistoryStore。"""
 
@@ -647,6 +705,13 @@ class Simulator:
             design_array = design_array.reshape(1, -1)
         if metric_array.ndim == 1:
             metric_array = metric_array.reshape(1, -1)
+        if observations is None and hasattr(self, "_legacy_simulation"):
+            simulated_designs, simulated_names, simulated = self._legacy_simulation
+            if (np.array_equal(design_array, simulated_designs)
+                    and tuple(name.casefold() for name in design_parameter_name_lst)
+                    == tuple(name.casefold() for name in simulated_names)
+                    and np.array_equal(metric_array, simulated.metrics, equal_nan=True)):
+                observations = simulated.observations
 
         store = SamplingHistoryStore(
             self.circuit_result_path,
@@ -679,6 +744,7 @@ class Simulator:
                 metric_array,
                 ["external"] * len(design_array),
                 failures,
+                observations=observations or None,
             )
             store.mark_run_completed(run_id, len(failures))
             store.export_csv()

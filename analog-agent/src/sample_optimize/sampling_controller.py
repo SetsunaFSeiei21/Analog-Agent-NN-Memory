@@ -149,6 +149,7 @@ class SamplingResult:
     failed_num: int
     duplicate_skipped_num: int
     success: bool
+    operating_points_csv_path: Path | None = None
 
 
 class Sampling_Controller:
@@ -529,6 +530,7 @@ class Sampling_Controller:
                 sampling_methods=sampling_methods,
                 failure_records=simulation_result.failure_records,
                 access_level=self.sample_access_level,
+                observations=simulation_result.observations or None,
             )
             self.history_store.mark_run_completed(run_id, failed_num)
             run_finalized = True
@@ -555,6 +557,7 @@ class Sampling_Controller:
                 failed_num=failed_num,
                 duplicate_skipped_num=duplicate_skipped_num,
                 success=failed_num == 0,
+                operating_points_csv_path=self.history_store.operating_points_csv_path,
             )
         except Exception as exc:
             if not run_finalized:

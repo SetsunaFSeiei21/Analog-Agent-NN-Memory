@@ -127,17 +127,17 @@ def test_incremental_history_never_rereads_labels_or_keeps_draft_keys(tmp_path):
     with patch("src.sample_optimize.advanced.controller.json.loads", wraps=json.loads) as read:
         designs, labels, excluded = controller._observed()
         assert designs == [[1.]] and labels == [True] and len(excluded) == 4
-        assert read.call_count == 2  # One visible observation and one design.
+        assert read.call_count == 1  # Only the design; OP labels come from the indexed SQL table.
         draft_key = controller.history_store.design_key([90.])
         excluded.add(draft_key)
         assert draft_key not in controller._observed()[2]
-        assert read.call_count == 2
+        assert read.call_count == 1
         run = controller.history_store.create_run(1, 1, {"random": 1}, {})
         controller.history_store.write_batch(run, [[5.]], [[5.]], ["random"], [], observations=[{"feasible": False}])
         read.reset_mock()
         designs, labels, excluded = controller._observed()
         assert designs == [[1.], [5.]] and labels == [True, False] and len(excluded) == 5
-        assert read.call_count == 2
+        assert read.call_count == 1
 
 
 @pytest.mark.parametrize("mode,conditioned", [("nominal_lut", True), ("nominal_lut", False), ("coupled_lut", True)])

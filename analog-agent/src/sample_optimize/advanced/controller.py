@@ -42,14 +42,15 @@ class DatasetSamplingResult:
     electrically_feasible_num: int
     budgets: dict
     timings_seconds: dict = field(default_factory=dict)
+    operating_points_csv_path: Path | None = None
 
 
 class DatasetSamplingController(Sampling_Controller):
     """Five methods, sequential feedback, context isolation and atomic resume."""
     def __init__(self, *, sampling_config_path=None, lut_cache_path=None, csv_export_interval_batches=10, **kwargs):
         if (isinstance(csv_export_interval_batches, bool) or
-                not isinstance(csv_export_interval_batches, int) or csv_export_interval_batches < 1):
-            raise ValueError("csv_export_interval_batches must be a positive integer")
+                not isinstance(csv_export_interval_batches, int) or csv_export_interval_batches < 0):
+            raise ValueError("csv_export_interval_batches must be a non-negative integer (0 exports only at exit)")
         self.csv_export_interval_batches = csv_export_interval_batches
         self.sampling_config = load_config(sampling_config_path)
         # Rollback journaling avoids WAL shared-memory assumptions on HPC
@@ -107,18 +108,18 @@ class DatasetSamplingController(Sampling_Controller):
         with self.history_store._connect() as con:
             # SQL only returns labels/designs of accessible, known OPs. Hidden
             # partitions contribute keys for collision avoidance, never labels.
-            rows = con.execute("""SELECT sample_id, design_key,
-                CASE WHEN access_level='train_visible' AND observation_json IS NOT NULL
-                     THEN design_values_json END,
-                CASE WHEN access_level='train_visible' THEN observation_json END
-                FROM samples WHERE sample_id > ? ORDER BY sample_id""",
+            rows = con.execute("""SELECT s.sample_id, s.design_key,
+                CASE WHEN s.access_level='train_visible' AND o.feasible IS NOT NULL
+                     THEN s.design_values_json END,
+                CASE WHEN s.access_level='train_visible' THEN o.feasible END
+                FROM samples s LEFT JOIN dc_operating_points o USING(sample_id)
+                WHERE s.sample_id > ? ORDER BY s.sample_id""",
                 (self._observed_last_id,)).fetchall()
         new_designs, new_feasible = [], []
         for row in rows:
             if row[3] is not None:
-                obs = json.loads(row[3])
                 new_designs.append(json.loads(row[2]))
-                new_feasible.append(bool(obs["feasible"]))
+                new_feasible.append(bool(row[3]))
         designs, feasible, all_keys = self._observation_cache
         designs.extend(new_designs)
         feasible.extend(new_feasible)
@@ -271,21 +272,21 @@ class DatasetSamplingController(Sampling_Controller):
                 batch_count += 1
                 # SQLite commits every batch. CSVs are compatibility snapshots;
                 # avoid repeatedly rewriting the entire growing history.
-                if batch_count % export_interval == 0 and sum(state["completed"].values()) < n_points:
+                if export_interval and batch_count % export_interval == 0 and sum(state["completed"].values()) < n_points:
                     with _measure(timings, "csv_export"):
                         self.history_store.export_csv()
                 self.logger.info("Five-method progress: %s / %s", state["completed"], allocation)
             with self.history_store._connect() as con:
-                rows = con.execute("SELECT success,observation_json FROM samples WHERE run_id=?", (run_id,)).fetchall()
-            complete = sum(row[0] for row in rows)
-            good = sum(json.loads(row[1])["feasible"] for row in rows)
+                complete, good = con.execute("""SELECT COALESCE(SUM(s.success),0),COALESCE(SUM(o.feasible),0)
+                    FROM samples s JOIN dc_operating_points o USING(sample_id) WHERE s.run_id=?""", (run_id,)).fetchone()
             self.history_store.mark_run_completed(run_id, n_points-complete)
             with _measure(timings, "csv_export"):
                 self.history_store.export_csv()
             budgets = self.budget(run_id)
             return DatasetSamplingResult(run_id, self.history_store.database_path,
                 self.history_store.design_csv_path, self.history_store.metrics_csv_path,
-                n_points, allocation, complete, good, budgets, timings)
+                n_points, allocation, complete, good, budgets, timings,
+                operating_points_csv_path=self.history_store.operating_points_csv_path)
         except BaseException as exc:
             # If a result transaction committed, load it before changing status.
             # The saved pending batch otherwise remains eligible for rerun.

@@ -134,13 +134,17 @@ LUT 假设电流随 W 成比例，仅作为候选生成近似；**实际 ngspice
 
 ## 历史、保存与恢复
 
-保存仍为 `design_parameters.csv`、`metrics.csv` 和 `sampling_history.sqlite3`。
-两个 CSV 行一一对应、只含现有设计参数及九个指标；新增信息在 SQLite 中：
+保存为 `design_parameters.csv`、`metrics.csv`、`dc_operating_points.csv` 和 `sampling_history.sqlite3`。
+三个 CSV 行一一对应；前两个只含现有设计参数及九个指标，工作点 CSV 按设计点展开全部 MOS。
+完整字段、带符号端电压、状态、缓存和旧数据导出见 [DC 工作点说明](dc_operating_points.md)。
+新增信息在 SQLite 中：
 
 | 位置 | 内容 |
 |---|---|
 | samples.sample_method | 五种来源 |
 | samples.observation_json | OP、可行性、失效原因和器件工作点 |
+| dc_operating_points | 每个设计点的静态偏置条件、OP 状态和缺失字段 |
+| dc_device_operating_points | 按 sample_id/器件名关联的全部 MOS 工程字段 |
 | samples.proposal_json | gm/ID 目标、LUT 标识或贝叶斯采集信息 |
 | sampling_context | 已验证的仿真上下文及指纹 |
 | sampling_state | 每方法配额、完成数、RNG、提案统计和待执行批次 |
@@ -152,7 +156,8 @@ LUT 假设电流随 W 成比例，仅作为候选生成近似；**实际 ngspice
 
 每个批次在启动 SPICE 前持久化待执行点和生成后的 RNG。结果与配额进度在一个 SQLite
 事务中提交；CSV 默认每10批原子导出，正常结束及可捕获异常退出时强制导出。
-可设 `--csv_export_interval_batches 1` 恢复每批导出。运行期间 CSV 可能比 SQLite
+可设 `--csv_export_interval_batches 1` 恢复每批导出；工作点宽表较大时可设
+`--csv_export_interval_batches 0` 仅在结束/异常时导出。运行期间 CSV 可能比 SQLite
 滞后，训练和恢复应以 SQLite 为准；进程被强制终止时，下一次恢复会重新导出。
 因此恢复时无需重新生成已保存点：
 gm/ID 批次生成较慢时也保存已接受的草稿和 RNG，避免丢掉批内已经选出的候选。

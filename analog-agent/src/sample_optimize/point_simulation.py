@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import json
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
@@ -22,6 +23,7 @@ class PointSimulationResult:
     cache_hit: bool
     real_spice_call: bool
     access_level: str
+    operating_point: Mapping[str, Any] | None = None
 
 
 class PointSimulator:
@@ -118,20 +120,32 @@ class PointSimulator:
                 self.history_store.mark_run_failed(run_id, error)
                 raise error
             self.history_store.mark_run_completed(run_id, 0)
-            metric_values = __import__("json").loads(existing["metric_values_json"])
+            metric_values = json.loads(existing["metric_values_json"])
+            if not self.history_store.operating_points_csv_path.is_file():
+                self.history_store.export_csv()
             return PointSimulationResult(
                 sample_id=int(existing["sample_id"]), design_key=design_key,
                 design_parameters=dict(zip(self.parameter_names, row.tolist())),
                 metrics=dict(zip(self.history_store.metric_names, metric_values)),
                 cache_hit=True, real_spice_call=False, access_level=existing["access_level"],
+                operating_point=self.history_store.fetch_operating_point(int(existing["sample_id"]),
+                    access_levels=self._visible_levels(access_level)),
             )
         try:
-            result = self.simulator.simulate_batch(
-                circuit_path=self.circuit_path,
-                n_workers=1,
-                design_parameters_array=row.reshape(1, -1),
-                continue_on_error=continue_on_error,
-            )
+            previous_ledger = getattr(self.simulator, "invocation_ledger", None)
+            self.simulator.invocation_ledger = (str(self.history_store.database_path), run_id)
+            try:
+                result = self.simulator.simulate_batch(
+                    circuit_path=self.circuit_path,
+                    n_workers=1,
+                    design_parameters_array=row.reshape(1, -1),
+                    continue_on_error=continue_on_error,
+                )
+            finally:
+                if previous_ledger is None:
+                    del self.simulator.invocation_ledger
+                else:
+                    self.simulator.invocation_ledger = previous_ledger
             ids = self.history_store.write_batch(
                 run_id=run_id,
                 design_parameters=row.reshape(1, -1),
@@ -142,6 +156,7 @@ class PointSimulator:
                 is_real_spice_call=True,
                 backbone_version=backbone_version,
                 adapter_version=adapter_version,
+                observations=result.observations or None,
             )
             self.history_store.mark_run_completed(run_id, len(result.failure_records))
             self.history_store.export_csv()
@@ -151,6 +166,8 @@ class PointSimulator:
                 design_parameters=dict(zip(self.parameter_names, row.tolist())),
                 metrics=dict(zip(self.history_store.metric_names, values)),
                 cache_hit=False, real_spice_call=True, access_level=access_level,
+                operating_point=self.history_store.fetch_operating_point(ids[0],
+                    access_levels=self._visible_levels(access_level)),
             )
         except Exception as exc:
             self.history_store.mark_run_failed(run_id, exc)

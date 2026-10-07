@@ -65,7 +65,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--sampling_config_path", type=Path, help="五方法配置 JSON；默认均为20%%，gm/ID为[8,20,0.5]。")
     arg_parser.add_argument("--lut_cache_path", type=Path, help="LUT 缓存目录，默认数据库根目录/.lut_cache；首次建表也使用 n_workers。")
     arg_parser.add_argument("--csv_export_interval_batches", type=int,
-                            help="五方法每多少批导出 CSV，默认10；设1每批导出。SQLite 每批提交，结束/异常时强制导出。")
+                            help="五方法每多少批导出三份 CSV，默认10；设1每批导出，设0仅结束/异常时导出。SQLite 每批提交。")
     arg_parser.add_argument("--resume_run_id", help="恢复原运行（原 n_points 不变）；可用 latest。")
 
     arg_parser.add_argument(

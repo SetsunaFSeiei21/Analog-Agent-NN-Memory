@@ -12,10 +12,13 @@ import uuid
 
 from datetime import datetime, timezone
 from contextlib import contextmanager
+from itertools import chain, groupby
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 import numpy as np
+
+from .operating_point_contract import DEVICE_FIELDS, device_values, finite_or_none
 
 
 __all__ = ["ACCESS_LEVELS", "SamplingHistoryStore"]
@@ -35,7 +38,7 @@ def _utc_now() -> str:
 
 
 class SamplingHistoryStore:
-    """SQLite 是历史数据源，两个 CSV 是由 SQLite 生成的兼容视图。"""
+    """SQLite 是历史数据源，设计、指标和工作点 CSV 是兼容视图。"""
 
     def __init__(
         self,
@@ -70,10 +73,12 @@ class SamplingHistoryStore:
         self.database_path = self.circuit_path / "sampling_history.sqlite3"
         self.design_csv_path = self.circuit_path / "design_parameters.csv"
         self.metrics_csv_path = self.circuit_path / "metrics.csv"
+        self.operating_points_csv_path = self.circuit_path / "dc_operating_points.csv"
         self.failure_path = self.circuit_path / "simulation_failures.jsonl"
 
         self._initialize_database()
         self._migrate_legacy_csv()
+        self._migrate_operating_points()
         self.logger.info("历史数据库已就绪：%s", self.database_path)
 
     @contextmanager
@@ -163,6 +168,30 @@ class SamplingHistoryStore:
                 "observation_json": "TEXT", "proposal_json": "TEXT",
             })
 
+            connection.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS dc_operating_points (
+                    sample_id INTEGER PRIMARY KEY REFERENCES samples(sample_id) ON DELETE CASCADE,
+                    schema_version INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    converged INTEGER,
+                    feasible INTEGER,
+                    condition_json TEXT NOT NULL,
+                    bias_topology TEXT,
+                    reasons_json TEXT NOT NULL,
+                    missing_fields_json TEXT NOT NULL,
+                    node_voltages_json TEXT NOT NULL,
+                    follower_error_v REAL,
+                    vout_v REAL
+                );
+                """
+                + "CREATE TABLE IF NOT EXISTS dc_device_operating_points ("
+                + "sample_id INTEGER NOT NULL REFERENCES dc_operating_points(sample_id) ON DELETE CASCADE,"
+                + "device_name TEXT NOT NULL,device_type TEXT,model_name TEXT,primitive_path TEXT,"
+                + ",".join(f"{name} REAL" for name in DEVICE_FIELDS)
+                + ",PRIMARY KEY(sample_id,device_name)) WITHOUT ROWID;"
+            )
+
             self._ensure_columns(
                 connection,
                 "sampling_runs",
@@ -241,6 +270,67 @@ class SamplingHistoryStore:
         for name, definition in definitions.items():
             if name not in existing:
                 connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+    @staticmethod
+    def _write_operating_point(connection, sample_id, observation):
+        observation = {} if observation is None else dict(observation)
+        version = int(observation.get("schema_version", 1))
+        converged = observation.get("converged")
+        feasible = observation.get("feasible")
+        status = observation.get("status")
+        if status is None:
+            status = "not_recorded" if not observation else ("failed" if converged is False else "legacy_partial")
+        encode = lambda value: json.dumps(value, ensure_ascii=False, allow_nan=False)
+        connection.execute(
+            """INSERT INTO dc_operating_points VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (sample_id, version, status,
+             None if converged is None else int(bool(converged)),
+             None if feasible is None else int(bool(feasible)),
+             encode(observation.get("condition", {})), observation.get("bias_topology"),
+             encode(observation.get("reasons", [])), encode(observation.get("missing_fields", {})),
+             encode(observation.get("node_voltages_v", {})),
+             finite_or_none(observation.get("follower_error_v")), finite_or_none(observation.get("vout_v"))),
+        )
+        columns = ("sample_id", "device_name", "device_type", "model_name", "primitive_path") + DEVICE_FIELDS
+        statement = (f"INSERT INTO dc_device_operating_points ({','.join(columns)}) "
+                     f"VALUES ({','.join('?' for _ in columns)})")
+        connection.executemany(statement, (
+            (sample_id, name.upper(), fields.get("device_type"), fields.get("model_name"), fields.get("primitive_path"))
+            + device_values(fields) for name, fields in observation.get("devices", {}).items()
+        ))
+
+    def _migrate_operating_points(self):
+        """Copy existing recorded values once; never simulate or invent labels."""
+        with self._connect() as connection:
+            rows = connection.execute("""SELECT s.sample_id,s.observation_json FROM samples s
+                LEFT JOIN dc_operating_points o USING(sample_id) WHERE o.sample_id IS NULL ORDER BY s.sample_id""")
+            for row in rows:
+                self._write_operating_point(connection, row["sample_id"],
+                    None if row["observation_json"] is None else json.loads(row["observation_json"]))
+
+    def fetch_operating_point(self, sample_id: int, *, access_levels=("train_visible",)):
+        """Structured OP inherits its parent sample's access partition."""
+        levels = tuple(dict.fromkeys(access_levels))
+        for level in levels:
+            _validate_access_level(level)
+        if not levels:
+            return None
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT o.*,s.access_level,s.design_key FROM dc_operating_points o JOIN samples s USING(sample_id) "
+                f"WHERE s.sample_id=? AND s.access_level IN ({','.join('?' for _ in levels)})",
+                (sample_id, *levels),
+            ).fetchone()
+            if row is None:
+                return None
+            result = dict(row)
+            for name in ("condition", "reasons", "missing_fields", "node_voltages"):
+                result[name] = json.loads(result.pop(name + "_json"))
+            result["devices"] = {
+                device["device_name"]: {key: device[key] for key in device.keys() if key not in {"sample_id", "device_name"}}
+                for device in connection.execute("SELECT * FROM dc_device_operating_points WHERE sample_id=? ORDER BY device_name", (sample_id,))
+            }
+            return result
 
     def _migrate_legacy_csv(self) -> None:
         with self._connect() as connection:
@@ -554,6 +644,8 @@ class SamplingHistoryStore:
                         None if proposals is None else json.dumps(proposals[sample_index], allow_nan=False),
                         cursor.lastrowid,
                     ))
+                    self._write_operating_point(connection, cursor.lastrowid,
+                                                None if observations is None else observations[sample_index])
                 except sqlite3.IntegrityError as exc:
                     raise RuntimeError(
                         "写入历史数据库时发现重复 design point，可能存在并发采样冲突"
@@ -568,6 +660,8 @@ class SamplingHistoryStore:
 
     def export_csv(self) -> None:
         with self._connect() as connection:
+            # All three CSVs use one read snapshot and the identical sample order.
+            connection.execute("BEGIN")
             rows = connection.execute(
                 """
                 SELECT sample_id, run_id, sample_index, sample_method,
@@ -576,14 +670,22 @@ class SamplingHistoryStore:
                 FROM samples ORDER BY sample_id
                 """
             ).fetchall()
-
-        design_rows = [json.loads(row["design_values_json"]) for row in rows]
-        metric_rows = [
-            [float("nan") if value is None else value for value in json.loads(row["metric_values_json"])]
-            for row in rows
-        ]
-        self._atomic_write_csv(self.design_csv_path, self.parameter_names, design_rows)
-        self._atomic_write_csv(self.metrics_csv_path, self.metric_names, metric_rows)
+            design_rows = (json.loads(row["design_values_json"]) for row in rows)
+            metric_rows = (
+                [float("nan") if value is None else value for value in json.loads(row["metric_values_json"])]
+                for row in rows
+            )
+            self._atomic_write_csv(self.design_csv_path, self.parameter_names, design_rows)
+            self._atomic_write_csv(self.metrics_csv_path, self.metric_names, metric_rows)
+            names = [row[0] for row in connection.execute("SELECT DISTINCT device_name FROM dc_device_operating_points ORDER BY device_name")]
+            metadata = ("csv_row_index", "sample_id", "design_key", "access_level", "op_schema_version", "op_status",
+                        "op_converged", "op_feasible", "op_bias_topology", "op_reasons", "op_missing_fields",
+                        "op_pdk_path", "op_corner", "op_temperature_c", "op_vdd_v", "op_vss_v", "op_vcm_v",
+                        "op_follower_error_v", "op_vout_v")
+            device_columns = ("device_type", "model_name") + DEVICE_FIELDS
+            header = metadata + tuple(f"{name}.{field}" for name in names for field in device_columns)
+            self._atomic_write_csv(self.operating_points_csv_path, header,
+                                   self._operating_point_csv_rows(connection, names, device_columns))
 
         failures = []
         for row in rows:
@@ -604,7 +706,29 @@ class SamplingHistoryStore:
         self.logger.info("SQLite 兼容导出完成：samples=%d", len(rows))
 
     @staticmethod
-    def _atomic_write_csv(path: Path, header: Sequence[str], rows: Sequence[Sequence[Any]]) -> None:
+    def _operating_point_csv_rows(connection, names, device_columns):
+        # A streaming join avoids loading the potentially large wide OP dataset
+        # into memory or running one SQL query per sample.
+        cursor = connection.execute("""SELECT s.sample_id,s.design_key,s.access_level,o.*,d.* FROM samples s
+            LEFT JOIN dc_operating_points o USING(sample_id)
+            LEFT JOIN dc_device_operating_points d USING(sample_id)
+            ORDER BY s.sample_id,d.device_name""")
+        nan = float("nan")
+        for row_index, (_, group) in enumerate(groupby(cursor, key=lambda row: row["sample_id"])):
+            first = next(group)
+            condition = json.loads(first["condition_json"] or "{}")
+            metadata = [row_index, first["sample_id"], first["design_key"], first["access_level"], first["schema_version"],
+                        first["status"], first["converged"], first["feasible"], first["bias_topology"],
+                        first["reasons_json"], first["missing_fields_json"],
+                        condition.get("PDK_PATH"), condition.get("CORNER"), condition.get("TEMP"),
+                        condition.get("VDD"), condition.get("VSS"), condition.get("VCM"),
+                        first["follower_error_v"], first["vout_v"]]
+            devices = {row["device_name"]: row for row in chain((first,), group) if row["device_name"] is not None}
+            values = [devices[name][field] if name in devices else None for name in names for field in device_columns]
+            yield [nan if value is None else value for value in metadata + values]
+
+    @staticmethod
+    def _atomic_write_csv(path: Path, header: Sequence[str], rows: Iterable[Sequence[Any]]) -> None:
         descriptor, temporary_name = tempfile.mkstemp(
             prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
         )
