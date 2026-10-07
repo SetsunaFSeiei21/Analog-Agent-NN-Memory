@@ -1,0 +1,74 @@
+diff --git a/analog-agent/configs/testbench/acdc_reference/ac_condition.json b/analog-agent/configs/testbench/acdc_reference/ac_condition.json
+index 934a1d96f96d7e16706f47a37ce869f4020a77a1..022efd2b8223e45b64188eaa305a348f5ac3eb11 100644
+--- a/analog-agent/configs/testbench/acdc_reference/ac_condition.json
++++ b/analog-agent/configs/testbench/acdc_reference/ac_condition.json
+@@ -8,7 +8,7 @@
+     "CL": "1p",
+     "AC_POINTS_PER_DEC": 10,
+     "AC_START": 0.1,
+-    "AC_STOP": "1G",
++    "AC_STOP": "50G",
+     "GAIN_MEASURE_FREQ": 0.1,
+     "OUTPUT_PATH": "ac_response.txt"
+ }
+diff --git a/analog-agent/configs/testbench/acdc_reference/stability_condition.json b/analog-agent/configs/testbench/acdc_reference/stability_condition.json
+index 30855438223d17a68564c1215df0560042f99390..0ddf4ffae34a240f1e890abe085c7118205945a5 100644
+--- a/analog-agent/configs/testbench/acdc_reference/stability_condition.json
++++ b/analog-agent/configs/testbench/acdc_reference/stability_condition.json
+@@ -8,6 +8,6 @@
+     "CL": "1p",
+     "AC_POINTS_PER_DEC": 10,
+     "AC_START": 0.1,
+-    "AC_STOP": "1G",
++    "AC_STOP": "50G",
+     "OUTPUT_PATH": "stability_response.txt"
+ }
+diff --git a/analog-agent/src/sample_optimize/testbench/single_ended_opamp/default_simulate_condition/ac_condition.json b/analog-agent/src/sample_optimize/testbench/single_ended_opamp/default_simulate_condition/ac_condition.json
+index cd2319202a266dede601dd2a362e9d57fcc00412..a4a9975871ec96983ecd4c7ba7299c1ed6d2e651 100644
+--- a/analog-agent/src/sample_optimize/testbench/single_ended_opamp/default_simulate_condition/ac_condition.json
++++ b/analog-agent/src/sample_optimize/testbench/single_ended_opamp/default_simulate_condition/ac_condition.json
+@@ -8,7 +8,7 @@
+     "CL": "1p",
+     "AC_POINTS_PER_DEC": 100,
+     "AC_START": 1,
+-    "AC_STOP": "100G",
++    "AC_STOP": "50G",
+     "GAIN_MEASURE_FREQ": 1,
+     "OUTPUT_PATH": "ac_response.txt"
+ }
+diff --git a/analog-agent/src/sample_optimize/testbench/single_ended_opamp/default_simulate_condition/stability_condition.json b/analog-agent/src/sample_optimize/testbench/single_ended_opamp/default_simulate_condition/stability_condition.json
+index e803b0aa6284ed60c9bf179fa89a458e0d910732..4f76c81aacddfe8f63c87842558b1059abc993a4 100644
+--- a/analog-agent/src/sample_optimize/testbench/single_ended_opamp/default_simulate_condition/stability_condition.json
++++ b/analog-agent/src/sample_optimize/testbench/single_ended_opamp/default_simulate_condition/stability_condition.json
+@@ -8,6 +8,6 @@
+     "CL": "1p",
+     "AC_POINTS_PER_DEC": 100,
+     "AC_START": 1,
+-    "AC_STOP": "1G",
++    "AC_STOP": "50G",
+     "OUTPUT_PATH": "stability_response.txt"
+ }
+diff --git a/analog-agent/src/sample_optimize/testbench/single_ended_opamp/tb_ac.cir b/analog-agent/src/sample_optimize/testbench/single_ended_opamp/tb_ac.cir
+index 47f9e94140ae9f8bef8be1c87945856c81acbec3..2e0d1548b172f33f351697ea625f8ea63d4c2124 100644
+--- a/analog-agent/src/sample_optimize/testbench/single_ended_opamp/tb_ac.cir
++++ b/analog-agent/src/sample_optimize/testbench/single_ended_opamp/tb_ac.cir
+@@ -21,6 +21,7 @@ CLOAD OUT VSS {{CL}}
+ .ac dec {{AC_POINTS_PER_DEC}} {{AC_START}} {{AC_STOP}}
+ 
+ .control
++set units = radians
+ set wr_singlescale
+ set wr_vecnames
+ option numdgt=15
+diff --git a/analog-agent/src/sample_optimize/testbench/single_ended_opamp/tb_stability.cir b/analog-agent/src/sample_optimize/testbench/single_ended_opamp/tb_stability.cir
+index 2991586ce388eb7111f3511c240f54dea6a36a6c..2b018a1f20f71158b478ee15f847149c859f418c 100644
+--- a/analog-agent/src/sample_optimize/testbench/single_ended_opamp/tb_stability.cir
++++ b/analog-agent/src/sample_optimize/testbench/single_ended_opamp/tb_stability.cir
+@@ -20,6 +20,7 @@ CLOAD OUT VSS {{CL}}
+ .ac dec {{AC_POINTS_PER_DEC}} {{AC_START}} {{AC_STOP}}
+ 
+ .control
++set units = radians
+ set wr_singlescale
+ set wr_vecnames
+ option numdgt=15

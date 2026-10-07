@@ -6,8 +6,8 @@
     "VSS": 0.0,
     "VCM": 0.9,
     "CL": "1p",
-    "AC_POINTS_PER_DEC": 10,
+    "AC_POINTS_PER_DEC": 100,
     "AC_START": 0.1,
-    "AC_STOP": "1G",
+    "AC_STOP": "10G",
     "OUTPUT_PATH": "stability_response.txt"
 }
