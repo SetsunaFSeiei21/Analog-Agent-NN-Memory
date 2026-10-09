@@ -21,7 +21,7 @@ REFERENCES = {
     "two_stage_opamp_otaf": ["XMBIAS", "XMN_INN", "XMP_DIODE", "XMP_STAGE2"],
     "two_stage_folded_opamp": ["XMP_BIAS_REF", "XMN_BIAS_REF", "XMP_PCAS_DIODE",
         "XMN_NCAS_DIODE", "XMP_INP", "XMP_FOLD_N", "XMP_CAS_N", "XMN_CAS_N", "XMP_STAGE2"],
-    "Opamp0": ["XPM7", "XNM4", "XNM5", "XPM4", "XNM1", "XPM1", "XPM2"],
+    "Opamp0": ["XPM7", "XNM4", "XNM6", "XPM4", "XNM1", "XPM1", "XPM2", "XNM5", "XPM6"],
     "Opamp1": ["XNM7", "XPM8", "XPM11", "XNM9", "XM11", "XM10", "XM9", "XM1", "XM7"],
 }
 SIGNAL = {

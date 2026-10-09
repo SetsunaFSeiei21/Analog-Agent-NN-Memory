@@ -1,7 +1,8 @@
 * ============================================================
-* opamp0_params.sp
+* Opamp0_params.sp
 *
-* Design parameters for opamp0
+* 25 design parameters for Opamp0: nine W/L groups, six M values,
+* and one bias current. These are example values, not a golden point.
 *
 * Units:
 *   W, L    -> um
@@ -30,6 +31,19 @@
 .param DESVAR_W7=5.0
 .param DESVAR_L7=0.5
 
-.param DESVAR_M1=1
+.param DESVAR_W8=5.0
+.param DESVAR_L8=0.5
 
-.param IBIAS_A=10e-6
+.param DESVAR_W9=5.0
+.param DESVAR_L9=0.5
+
+* Tail PMOS, input pair, upper PMOS mirror, PMOS cascodes,
+* NMOS sinks, and NMOS cascodes, respectively.
+.param DESVAR_M1=2
+.param DESVAR_M2=1
+.param DESVAR_M3=1
+.param DESVAR_M4=1
+.param DESVAR_M5=2
+.param DESVAR_M6=1
+
+.param IBIAS_A=5e-6

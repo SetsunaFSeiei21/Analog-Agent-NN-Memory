@@ -35,6 +35,11 @@ def test_profiles_cover_shared_mos_groups(name, override):
     assert all(np.allclose(t, np.arange(8., 20.01, .5)) for t in targets.values())
     if name == "Opamp0":
         assert "XNM6" not in signal and "XNM5" not in signal
+        by_width = {g.width: g for g in groups}
+        assert set(by_width) == {f"DESVAR_W{i}" for i in range(1, 10)}
+        assert by_width["DESVAR_W3"].members == ("XNM6",)
+        assert by_width["DESVAR_W8"].members == ("XNM5",)
+        assert by_width["DESVAR_W9"].members == ("XPM6",)
     if name == "Opamp1":
         assert "XPM10" not in signal and "XNM10" not in signal
 

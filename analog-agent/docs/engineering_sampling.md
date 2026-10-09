@@ -66,8 +66,15 @@ LHS 的分层性质同样会受到离散投影和去重影响。
 | 5t_ota | WBIAS, WIN, WLOAD | — |
 | two_stage_opamp_otaf | WBIAS, WIN, WLOAD, W2P | — |
 | two_stage_folded_opamp | WPBIAS, WNBIAS, WPCAS_BIAS, WNCAS_BIAS, WIN, WPFOLD, WPCAS, WNCAS, W2P | XMP_PCAS_SOURCE, XMN_NCAS_SOURCE |
-| Opamp0 | DESVAR_W1 … DESVAR_W7 | XNM6 |
+| Opamp0 | DESVAR_W1 … DESVAR_W9 | XNM6 |
 | Opamp1 | DESVAR_W1, W2, W4, W5, W6, W7, W8, W9, W10（均含DESVAR_前缀） | XPM10, XNM10 |
+
+Opamp0 使用 25 个设计参数：`DESVAR_W1..W9`、`DESVAR_L1..L9`、
+`DESVAR_M1..M6` 和 `IBIAS_A`。`XNM6`、`XNM5` 分别使用 W3/L3、W8/L8，
+尾管 `XPM6` 独立使用 W9/L9；六个 M 依次控制尾管、输入对、上部 PMOS 镜像、
+PMOS 级联管、NMOS 电流汇和 NMOS 级联管。配套参数文件只提供示例初值，
+采样边界仍由 `parameter_ranges.json` 解析。更换网表后需使用新的输出目录，
+不能把旧 16 参数历史数据库作为新网表的续跑数据。
 
 参考组 L、M 和无源器件先从相同的物理网格取样。根据参考组 LUT 电流密度与 W 范围，
 从原 IBIAS_A 网格中选择相容电流；其余组再从原 L 网格中选择与初始尺寸约束相容的长度。
@@ -76,9 +83,11 @@ LHS 的分层性质同样会受到离散投影和去重影响。
 可将 `condition_lengths_on_width` 设为 `false`，改为独立抽取所有 L，再从各组尺寸估计的
 共同电流区间抽取 I；窄 W 范围下这种消融的提案拒绝率可能明显较高。
 默认 `sizing_mode="nominal_lut"`。先用逆 gm/ID 和体效应建立节点电压初值，
-再将参考支路名义电流密度转换为共享 W；五个拓扑的参考管均采用 `ID/M=IBIAS_A`
-的名义镜像关系，尾管、折叠支路和第二级的电流倍乘仍由原网表表达式保留。
+再将参考支路名义电流密度转换为共享 W；参考管采用 `ID/M=IBIAS_A` 的提案初值，
+尾管、折叠支路和第二级的电流倍乘仍由原网表表达式保留。
 实际支路电流偏离名义值时，由后续真实 OP 标注，不因预测的偏置失效而丢掉样本。
+Opamp0 的 W9/L9 和六个 M 独立后，`ID/M=IBIAS_A` 仅是尺寸提案假设，
+不表示这些支路的实际电流相同或 gm/ID 目标已经达成。
 可选 `sizing_mode="coupled_lut"` 进一步联合求解节点 KCL 和参考 gm/ID，
 共享 W 作为未知量；此模式仅接受残差达标的解，复杂拓扑的拒绝率和解算时间可能较高。
 共享 W/L/M 绑定保持不变。计算出的 W 越界会拒绝提案，不截断到边界；
