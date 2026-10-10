@@ -1,0 +1,1022 @@
+#!/usr/bin/env python3
+"""Export the single DC snapshot from Opamp0_all_metrics.cir to Excel.
+
+ngspice invokes this script after writing the nine-metric result.
+Run it manually to recover Excel from an already completed simulation.
+The raw parser and CSV/JSON paths use only the Python standard library.
+The portable user-environment XLSX writer requires openpyxl.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import math
+import os
+from pathlib import Path
+import re
+import sys
+import tempfile
+
+
+METRICS = (
+    ("DC_Gain_dB", "dB"),
+    ("UGF_Hz", "Hz"),
+    ("Phase_Margin_deg", "deg"),
+    ("CMRR_dB", "dB"),
+    ("PSRR_Plus_dB", "dB"),
+    ("PSRR_Minus_dB", "dB"),
+    ("Slew_Rise_V_us", "V/us"),
+    ("Slew_Fall_V_us", "V/us"),
+    ("Power_Quiescent_uW", "uW"),
+)
+
+CAPS = (
+    "cgg", "cgs", "cgd", "cgb",
+    "cdg", "cdd", "cds", "cdb",
+    "csg", "csd", "css", "csb",
+    "cbg", "cbd", "cbs", "cbb",
+    "capbd", "capbs",
+)
+
+CHARGES = ("qg", "qb", "qd", "qs")
+
+CORE = (
+    "w", "l", "m", "id", "gm",
+    "gds", "gmbs", "vth", "vdsat",
+)
+
+DC_HEADERS = (
+    "Device",
+    "MOS_Type",
+    "Model",
+    "D_Node",
+    "G_Node",
+    "S_Node",
+    "B_Node",
+    "W_um",
+    "L_um",
+    "M",
+    "VD_V",
+    "VG_V",
+    "VS_V",
+    "VB_V",
+    "VGS_V",
+    "VDS_V",
+    "VBS_V",
+    "Id_model_A",
+    "gm_S",
+    "gds_S",
+    "gmbs_S",
+    "Vth_model_V",
+    "Vdsat_model_V",
+    "gm_over_Id_per_V",
+    "gm_over_gds",
+    "ro_Ohm",
+    "VDS_oriented_V",
+    "Vov_est_V",
+    "Saturation_margin_V",
+)
+
+CAP_HEADERS = (
+    ("Device", "MOS_Type", "M")
+    + tuple(q + "_F" for q in CAPS)
+    + tuple(q + "_C" for q in CHARGES)
+)
+
+# 与新版网表保持一致：
+# W1～W7、L1～L7、M0～M2、IBIAS_A，共 18 个独立参数。
+PARAMETERS = tuple(
+    name
+    for i in range(1, 8)
+    for name in (f"DESVAR_W{i}", f"DESVAR_L{i}")
+)
+PARAMETERS += tuple(
+    f"DESVAR_M{i}" for i in range(0, 3)
+) + ("IBIAS_A",)
+
+CONDITIONS = (
+    ("SUPPLY_VDD", "V"),
+    ("SUPPLY_VSS", "V"),
+    ("INPUT_VCM", "V"),
+    ("LOAD_C", "F"),
+    ("AC_DENSITY", "points/dec"),
+    ("AC_START_HZ", "Hz"),
+    ("AC_STOP_HZ", "Hz"),
+    ("REF_HZ", "Hz"),
+    ("SR_LOW", "V"),
+    ("SR_HIGH", "V"),
+)
+
+
+def finite_or_marker(value: float):
+    if math.isnan(value):
+        return "nan"
+    if math.isinf(value):
+        return "inf" if value > 0 else "-inf"
+    return value
+
+
+def read_dc_raw(path: Path) -> dict[str, float]:
+    """Read one real-valued Operating Point plot."""
+    lines = path.read_text(
+        encoding="utf-8",
+        errors="strict",
+    ).splitlines()
+
+    header = {}
+
+    try:
+        start = lines.index("Variables:")
+        end = lines.index("Values:", start)
+    except ValueError as exc:
+        raise ValueError(
+            "Expected an ASCII ngspice raw file "
+            "with Variables/Values sections"
+        ) from exc
+
+    for line in lines[:start]:
+        if ":" in line:
+            key, value = line.split(":", 1)
+            header[key.strip().lower()] = value.strip()
+
+    if header.get("plotname", "").lower() != "operating point":
+        raise ValueError(
+            "The raw file is not a DC Operating Point plot"
+        )
+
+    if header.get("flags", "").lower().split() != ["real"]:
+        raise ValueError(
+            "Expected real DC values, not a complex AC plot"
+        )
+
+    if int(header.get("no. points", "0")) != 1:
+        raise ValueError("Expected exactly one DC point")
+
+    count = int(header["no. variables"])
+    variables = []
+
+    for line in lines[start + 1:end]:
+        fields = line.split()
+
+        if fields:
+            if len(fields) < 3 or int(fields[0]) != len(variables):
+                raise ValueError(
+                    "Malformed raw-file variable table"
+                )
+
+            variables.append(fields[1].lower())
+
+    if len(variables) != count or len(set(variables)) != count:
+        raise ValueError(
+            "Incomplete or duplicated variable table"
+        )
+
+    data = [
+        line.split()
+        for line in lines[end + 1:]
+        if line.strip()
+    ]
+
+    if (
+        len(data) != count
+        or len(data[0]) != 2
+        or data[0][0] != "0"
+    ):
+        raise ValueError("Incomplete raw-file value table")
+
+    values = [float(data[0][1])]
+
+    for fields in data[1:]:
+        if len(fields) != 1:
+            raise ValueError("Malformed raw-file value")
+
+        values.append(float(fields[0]))
+
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError(
+            "Non-finite DC state; refusing to present it "
+            "as a completed snapshot"
+        )
+
+    return dict(zip(variables, values))
+
+
+def parse_devices(netlist: str):
+    supported_models = {
+        "sky130_fd_pr__pfet_01v8": "PMOS",
+        "sky130_fd_pr__pfet_01v8_lvt": "PMOS",
+        "sky130_fd_pr__nfet_01v8": "NMOS",
+        "sky130_fd_pr__nfet_01v8_lvt": "NMOS",
+    }
+
+    match = re.search(
+        r"(?ims)^\.subckt\s+DUT\s+VINP\s+VINN\s+VOUT\s+VDD\s+VSS\s*\n"
+        r"(.*?)^\.ends\s+DUT\b",
+        netlist,
+    )
+    if not match:
+        raise ValueError(
+            "Cannot find the canonical DUT interface in the supplied netlist"
+        )
+
+    devices = []
+
+    for line in match.group(1).splitlines():
+        fields = line.split()
+
+        if len(fields) < 6:
+            continue
+        if not fields[0].lower().startswith(("xpm", "xnm")):
+            continue
+
+        name, drain, gate, source, bulk, model = fields[:6]
+        model = model.lower()
+
+        if model not in supported_models:
+            raise ValueError(f"Unsupported MOS model: {model}")
+
+        devices.append((
+            name.upper(),
+            supported_models[model],
+            model,
+            drain.upper(),
+            gate.upper(),
+            source.upper(),
+            bulk.upper(),
+        ))
+
+    if len(devices) != 17 or len({d[0] for d in devices}) != 17:
+        raise ValueError(
+            "This testbench must contain the expected 17 unique MOS devices"
+        )
+
+    return devices
+
+
+def read_metrics(path: Path):
+    with path.open(
+        newline="",
+        encoding="utf-8",
+    ) as handle:
+        rows = list(csv.reader(handle))
+
+    if (
+        len(rows) != 2
+        or rows[0] != [metric[0] for metric in METRICS]
+        or len(rows[1]) != 9
+    ):
+        raise ValueError(
+            "Metrics TXT must have the exact canonical "
+            "header and one nine-column row"
+        )
+
+    return [
+        [name, finite_or_marker(float(cell)), unit]
+        for (name, unit), cell in zip(METRICS, rows[1])
+    ]
+
+
+def cell_column(index: int) -> str:
+    result = ""
+
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        result = chr(65 + remainder) + result
+
+    return result
+
+
+def dc_formulas(row: int):
+    # Native Id/gm/gds already include M.
+    # gm/Id uses current magnitude.
+    return {
+        "gm_over_Id_per_V": (
+            f'=IF(ABS(R{row})>0,'
+            f'ABS(S{row})/ABS(R{row}),"nan")'
+        ),
+        "gm_over_gds": (
+            f'=IF(ABS(T{row})>0,'
+            f'ABS(S{row})/ABS(T{row}),"nan")'
+        ),
+        "ro_Ohm": (
+            f'=IF(ABS(T{row})>0,1/ABS(T{row}),"nan")'
+        ),
+        "VDS_oriented_V": (
+            f'=IF(B{row}="PMOS",-P{row},P{row})'
+        ),
+        "Vov_est_V": (
+            f'=IF(B{row}="PMOS",-O{row},O{row})'
+            f'-ABS(V{row})'
+        ),
+        "Saturation_margin_V": (
+            f"=AA{row}-ABS(W{row})"
+        ),
+    }
+
+
+def prepare_payload(
+    raw: dict[str, float],
+    netlist_text: str,
+    metric_rows,
+):
+    def required(name):
+        try:
+            return raw[name.lower()]
+        except KeyError as exc:
+            raise ValueError(
+                f"Missing required DC vector {name}; "
+                "the netlist/export schema may be stale"
+            ) from exc
+
+    def voltage(node):
+        port_map = {
+            "VINP": "inp_cm",
+            "VINN": "inn_cm",
+            "VOUT": "out_cm",
+            "VDD": "vdd_q",
+            "VSS": "vss_q",
+        }
+
+        if node in ("0", "GND"):
+            return 0.0
+
+        vector_name = (
+            "v("
+            + port_map.get(
+                node,
+                "xdut_cm." + node.lower(),
+            )
+            + ")"
+        )
+
+        return required(vector_name)
+
+    dc_rows = []
+    cap_rows = []
+
+    for (
+        name,
+        kind,
+        model,
+        drain,
+        gate,
+        source,
+        bulk,
+    ) in parse_devices(netlist_text):
+        fields = {
+            quantity: required(
+                f"op_{name.lower()}_{quantity}"
+            )
+            for quantity in CORE + CAPS + CHARGES
+        }
+
+        vd, vg, vs, vb = (
+            voltage(node)
+            for node in (drain, gate, source, bulk)
+        )
+
+        vgs = vg - vs
+        vds = vd - vs
+        vbs = vb - vs
+
+        polarity = -1 if kind == "PMOS" else 1
+        oriented = polarity * vds
+
+        ratio = (
+            abs(fields["gm"]) / abs(fields["id"])
+            if fields["id"]
+            else math.nan
+        )
+
+        intrinsic = (
+            abs(fields["gm"]) / abs(fields["gds"])
+            if fields["gds"]
+            else math.nan
+        )
+
+        ro = (
+            1 / abs(fields["gds"])
+            if fields["gds"]
+            else math.nan
+        )
+
+        row = [
+            name,
+            kind,
+            model,
+            drain,
+            gate,
+            source,
+            bulk,
+            fields["w"] * 1e6,
+            fields["l"] * 1e6,
+            fields["m"],
+            vd,
+            vg,
+            vs,
+            vb,
+            vgs,
+            vds,
+            vbs,
+            fields["id"],
+            fields["gm"],
+            fields["gds"],
+            fields["gmbs"],
+            fields["vth"],
+            fields["vdsat"],
+            ratio,
+            intrinsic,
+            ro,
+            oriented,
+            polarity * vgs - abs(fields["vth"]),
+            oriented - abs(fields["vdsat"]),
+        ]
+
+        dc_rows.append(
+            [
+                finite_or_marker(value)
+                if isinstance(value, float)
+                else value
+                for value in row
+            ]
+        )
+
+        cap_rows.append(
+            [name, kind, fields["m"]]
+            + [
+                fields[quantity]
+                for quantity in CAPS + CHARGES
+            ]
+        )
+
+    setup_rows = [
+        [
+            "DC snapshot",
+            "Instance",
+            "XDUT_CM",
+            "",
+            "Quiet voltage follower; "
+            "same instance as quiescent power",
+        ],
+        [
+            "DC snapshot",
+            "VINP_actual",
+            required("v(inp_cm)"),
+            "V",
+            "Actual node voltage, not the requested target",
+        ],
+        [
+            "DC snapshot",
+            "VINN_actual",
+            required("v(inn_cm)"),
+            "V",
+            "Feedback input may differ from VINP "
+            "at an unhealthy point",
+        ],
+        [
+            "DC snapshot",
+            "VOUT_actual",
+            required("v(out_cm)"),
+            "V",
+            "Actual solved DC output",
+        ],
+        [
+            "DC snapshot",
+            "Follower_error",
+            required("follower_error_v"),
+            "V",
+            "VOUT minus VINP; signed",
+        ],
+        [
+            "DC snapshot",
+            "DM_CM_bias_difference",
+            required("dm_cm_bias_difference_v"),
+            "V",
+            "OUT_DM minus OUT_CM",
+        ],
+        [
+            "DC snapshot",
+            "Power_Quiescent",
+            required("power_uw"),
+            "uW",
+            "One DUT instance only",
+        ],
+    ]
+
+    for name, unit in CONDITIONS:
+        setup_rows.append(
+            [
+                "Test condition",
+                name,
+                required("op_input_" + name.lower()),
+                unit,
+                "",
+            ]
+        )
+
+    temp = re.search(
+        r"(?im)^\s*\.temp\s+([-+\d.eE]+)",
+        netlist_text,
+    )
+
+    if temp:
+        setup_rows.append(
+            [
+                "Test condition",
+                "TEMP",
+                float(temp.group(1)),
+                "degC",
+                "",
+            ]
+        )
+
+    pdk = re.search(
+        r'(?im)^\s*\.lib\s+"([^"]+)"\s+(\S+)',
+        netlist_text,
+    )
+
+    if pdk:
+        setup_rows.extend(
+            [
+                [
+                    "Test condition",
+                    "PDK_PATH",
+                    pdk.group(1),
+                    "",
+                    "Model library used for this run",
+                ],
+                [
+                    "Test condition",
+                    "CORNER",
+                    pdk.group(2),
+                    "",
+                    "",
+                ],
+            ]
+        )
+
+    for name in PARAMETERS:
+        if name.startswith(("DESVAR_W", "DESVAR_L")):
+            unit = "um"
+        elif name == "IBIAS_A":
+            unit = "A"
+        else:
+            unit = "count"
+
+        setup_rows.append(
+            [
+                "Design parameter",
+                name,
+                required("op_input_" + name.lower()),
+                unit,
+                "Resolved numeric value",
+            ]
+        )
+
+    setup_rows.extend(
+        [
+            [
+                "Definition",
+                "VGS_V / VDS_V / VBS_V",
+                "Terminal node differences",
+                "V",
+                "Signed; PMOS VGS/VDS normally negative",
+            ],
+            [
+                "Definition",
+                "Id_model_A / gm_S / gds_S",
+                "Native ngspice BSIM values",
+                "",
+                "Already include M; no extra multiplication",
+            ],
+            [
+                "Definition",
+                "Capacitances",
+                "Native BSIM charge-derivative matrix",
+                "F",
+                "Preserve signed off-diagonal terms; "
+                "not all entries are positive lumped capacitors",
+            ],
+            [
+                "Definition",
+                "Saturation_margin_V",
+                "VDS_oriented minus abs(Vdsat_model)",
+                "V",
+                "Diagnostic only; not an unconditional "
+                "operating-region classifier",
+            ],
+            [
+                "Definition",
+                "Vov_est_V",
+                "Oriented VGS minus abs(Vth_model)",
+                "V",
+                "Diagnostic only; negative overdrive "
+                "can occur in weak inversion",
+            ],
+            [
+                "Definition",
+                "Missing metric",
+                "nan",
+                "",
+                "No fabricated zero; valid negative "
+                "metrics are retained",
+            ],
+            [
+                "Definition",
+                "Transient initial point",
+                "Separate from the quiet DC snapshot",
+                "",
+                "Pulse starts at SR_LOW; "
+                "no transient transistor states are exported",
+            ],
+        ]
+    )
+
+    return {
+        "schema_version": 1,
+        "dc_headers": list(DC_HEADERS),
+        "dc_rows": dc_rows,
+        "cap_headers": list(CAP_HEADERS),
+        "cap_rows": cap_rows,
+        "metrics": metric_rows,
+        "setup_rows": setup_rows,
+        "dc_notes": (
+            "DC snapshot: XDUT_CM voltage follower. "
+            "Signed terminal voltages; "
+            "model currents already include M."
+        ),
+        "cap_notes": (
+            "Native BSIM capacitance/charge matrix. "
+            "Preserve signs of cross terms."
+        ),
+    }
+
+
+def atomic_csv(path: Path, header, rows):
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    fd, temporary = tempfile.mkstemp(
+        prefix=path.name + ".",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+
+    try:
+        with os.fdopen(
+            fd,
+            "w",
+            newline="",
+            encoding="utf-8-sig",
+        ) as handle:
+            writer = csv.writer(handle)
+            writer.writerow(header)
+            writer.writerows(rows)
+
+        os.replace(temporary, path)
+
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def write_wide_csv(path: Path, payload):
+    header = ["DC_Instance"]
+    values = ["XDUT_CM"]
+
+    for row, cap in zip(
+        payload["dc_rows"],
+        payload["cap_rows"],
+    ):
+        for field, value in zip(
+            payload["dc_headers"][7:],
+            row[7:],
+        ):
+            header.append(row[0] + "__" + field)
+            values.append(value)
+
+        for field, value in zip(
+            payload["cap_headers"][3:],
+            cap[3:],
+        ):
+            header.append(row[0] + "__" + field)
+            values.append(value)
+
+    atomic_csv(
+        path,
+        header,
+        [values],
+    )
+
+
+def write_user_workbook(path: Path, payload):
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import (
+            Alignment,
+            Font,
+            PatternFill,
+        )
+        from openpyxl.utils import get_column_letter
+        from openpyxl.workbook.properties import CalcProperties
+
+    except ImportError as exc:
+        raise RuntimeError(
+            "Install the Excel dependency first: "
+            "python3 -m pip install openpyxl"
+        ) from exc
+
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+
+    workbook.calculation = CalcProperties(
+        calcId=124519,
+        fullCalcOnLoad=True,
+    )
+
+    contents = (
+        (
+            "DC_Operating_Point",
+            payload["dc_headers"],
+            payload["dc_rows"],
+            payload["dc_notes"],
+        ),
+        (
+            "MOS_Capacitances",
+            payload["cap_headers"],
+            payload["cap_rows"],
+            payload["cap_notes"],
+        ),
+        (
+            "Metrics",
+            ["Metric", "Value", "Unit"],
+            payload["metrics"],
+            "",
+        ),
+        (
+            "Setup",
+            ["Category", "Parameter", "Value", "Unit", "Notes"],
+            payload["setup_rows"],
+            "",
+        ),
+    )
+
+    for name, headers, rows, note in contents:
+        sheet = workbook.create_sheet(name)
+        sheet.sheet_view.showGridLines = False
+
+        sheet.append(headers)
+
+        for row in rows:
+            sheet.append(row)
+
+        if name == "DC_Operating_Point":
+            sheet.freeze_panes = "H2"
+        elif name == "MOS_Capacitances":
+            sheet.freeze_panes = "D2"
+        else:
+            sheet.freeze_panes = "A2"
+
+        sheet.auto_filter.ref = sheet.dimensions
+
+        for cell in sheet[1]:
+            cell.fill = PatternFill(
+                "solid",
+                fgColor="253B55",
+            )
+
+            cell.font = Font(
+                name="Arial",
+                size=10,
+                bold=True,
+                color="FFFFFF",
+            )
+
+            cell.alignment = Alignment(
+                horizontal="center",
+                vertical="center",
+                wrap_text=True,
+            )
+
+        sheet.row_dimensions[1].height = 34
+
+        for row in sheet.iter_rows(min_row=2):
+            for cell in row:
+                cell.font = Font(
+                    name="Arial",
+                    size=10,
+                    color="172B4D",
+                )
+
+                cell.alignment = Alignment(
+                    horizontal=(
+                        "right"
+                        if isinstance(cell.value, (int, float))
+                        else "left"
+                    ),
+                    vertical="center",
+                )
+
+                if isinstance(cell.value, (int, float)):
+                    cell.number_format = "0.000000E+00"
+
+            if row[0].row % 2 == 0:
+                for cell in row:
+                    cell.fill = PatternFill(
+                        "solid",
+                        fgColor="F3F6FA",
+                    )
+
+        for col_index, header in enumerate(headers, 1):
+            length = min(
+                max(len(str(header)) + 2, 16),
+                32,
+            )
+
+            if name == "DC_Operating_Point" and col_index == 3:
+                length = 32
+
+            if name == "Setup":
+                length = [22, 30, 68, 14, 100][col_index - 1]
+
+            if name == "Metrics":
+                length = [29, 22, 14][col_index - 1]
+
+            sheet.column_dimensions[
+                get_column_letter(col_index)
+            ].width = length
+
+        if note:
+            sheet.cell(
+                len(rows) + 3,
+                1,
+                note,
+            )
+
+        if name == "DC_Operating_Point":
+            for row_index in range(2, len(rows) + 2):
+                for field, formula in dc_formulas(row_index).items():
+                    column = headers.index(field) + 1
+
+                    sheet.cell(
+                        row_index,
+                        column,
+                        formula,
+                    ).number_format = "0.000000E+00"
+
+            for column in (8, 9):
+                for row in sheet.iter_rows(
+                    min_row=2,
+                    max_row=len(rows) + 1,
+                    min_col=column,
+                    max_col=column,
+                ):
+                    row[0].number_format = "0.000"
+
+            for row in sheet.iter_rows(
+                min_row=2,
+                max_row=len(rows) + 1,
+                min_col=10,
+                max_col=10,
+            ):
+                row[0].number_format = "0"
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    fd, temporary = tempfile.mkstemp(
+        prefix=path.stem + ".",
+        suffix=".xlsx",
+        dir=path.parent,
+    )
+    os.close(fd)
+
+    try:
+        workbook.save(temporary)
+        os.replace(temporary, path)
+
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+    )
+
+    parser.add_argument(
+        "--netlist",
+        type=Path,
+        default=Path("Opamp0_all_metrics.cir"),
+    )
+
+    parser.add_argument(
+        "--raw",
+        type=Path,
+        default=Path("opamp0_dc_operating_point.raw"),
+    )
+
+    parser.add_argument(
+        "--metrics",
+        type=Path,
+        default=Path("opamp0_metrics.txt"),
+    )
+
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("opamp0_results.xlsx"),
+    )
+
+    parser.add_argument(
+        "--wide-csv",
+        type=Path,
+        default=Path("opamp0_dc_operating_point.csv"),
+    )
+
+    parser.add_argument(
+        "--json-output",
+        type=Path,
+        help="Optional numeric intermediate for analysis or CI",
+    )
+
+    parser.add_argument(
+        "--json-only",
+        action="store_true",
+        help="Validate/export the numeric intermediate without XLSX",
+    )
+
+    args = parser.parse_args(argv)
+
+    try:
+        payload = prepare_payload(
+            read_dc_raw(args.raw),
+            args.netlist.read_text(encoding="utf-8"),
+            read_metrics(args.metrics),
+        )
+
+        write_wide_csv(
+            args.wide_csv,
+            payload,
+        )
+
+        if args.json_output or args.json_only:
+            target = (
+                args.json_output
+                or args.output.with_suffix(".json")
+            )
+
+            target.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            target.write_text(
+                json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    indent=2,
+                    allow_nan=False,
+                ),
+                encoding="utf-8",
+            )
+
+        if not args.json_only:
+            write_user_workbook(
+                args.output,
+                payload,
+            )
+
+            print(
+                f"Excel saved: {args.output} "
+                f"(17 MOS devices, 9 metrics, "
+                f"{len(PARAMETERS)} design parameters)",
+                flush=True,
+            )
+
+        print(
+            f"DC wide CSV saved: {args.wide_csv}",
+            flush=True,
+        )
+
+        return 0
+
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(
+            f"Excel/DC export failed: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
