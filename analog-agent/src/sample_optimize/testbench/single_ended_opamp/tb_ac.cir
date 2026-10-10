@@ -21,6 +21,7 @@ CLOAD OUT VSS {{CL}}
 .ac dec {{AC_POINTS_PER_DEC}} {{AC_START}} {{AC_STOP}}
 
 .control
+set units = radians
 set wr_singlescale
 set wr_vecnames
 option numdgt=15

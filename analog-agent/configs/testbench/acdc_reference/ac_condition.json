@@ -4,11 +4,11 @@
     "TEMP": 27,
     "VDD": 1.8,
     "VSS": 0.0,
-    "VCM": 0.9,
+    "VCM": 0.72,
     "CL": "1p",
     "AC_POINTS_PER_DEC": 10,
     "AC_START": 0.1,
-    "AC_STOP": "10G",
+    "AC_STOP": "20G",
     "GAIN_MEASURE_FREQ": 0.1,
     "OUTPUT_PATH": "ac_response.txt"
 }

@@ -1,0 +1,473 @@
+Opamp0 - fully open-loop nine-metric testbench
+* Run: ngspice -b Opamp0_open_loop.cir
+* No DUT output is connected back to either input, including during DC.
+* Inputs: VINP=VCM+VDIFF/2, VINN=VCM-VDIFF/2.
+* INPUT_VDIFF may require adjustment to obtain a useful open-loop bias.
+* DC/AC quantities describe the actual solved bias, even near a rail.
+* Gain/UGF use true differential gain Ad at fixed input common mode.
+* CMRR=|Ad/Acm|; PSRR+/-=|Ad/Asupply+/-|, at REF_HZ.
+* Phase_Margin_deg is a hypothetical unity-feedback estimate at this bias:
+* T=-gn=Ad-Acm/2, Vout=gp*VinP+gn*VinN. It uses T's own unity crossing.
+* UGF_Hz uses Ad's crossing; Loop_UGF_Hz is exported separately.
+* No physical feedback loop is closed to measure PM or the DC point.
+* Slew fields are OPEN-LOOP output 10%-90% transition rates, in V/us.
+* They are not directly comparable with closed-loop follower slew results.
+* Window-averaged endpoints require inspection of the transient waveform.
+* Excel export: keep opamp0_export_open_loop.py in the working directory.
+* Python 3 and openpyxl are required only for Excel export.
+
+.param mc_mm_switch=0 mc_pr_switch=0
+.lib "/share/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+.option scale=1u
+.options numdgt=15
+.temp 27
+
+* --------------------- TEST CONDITIONS -----------------------
+.param SUPPLY_VDD=1.8 SUPPLY_VSS=0 INPUT_VCM=0.9 INPUT_VDIFF=0
+.param LOAD_C=1p
+.param AC_DENSITY=100 AC_START_HZ=0.1 AC_STOP_HZ=50e9 REF_HZ=1
+
+* Differential pulse excursions relative to INPUT_VDIFF; fixed common mode.
+.param SR_DIFF_LOW=-10m SR_DIFF_HIGH=10m
+.param SR_DELAY=1u SR_INPUT_TR=1n SR_INPUT_TF=1n
+.param SR_WIDTH=4u SR_PERIOD=10u
+.param TRAN_STEP=1n TRAN_STOP=10u TRAN_MAX_STEP=1n
+.param LOW_AVG_START=0.2u LOW_AVG_STOP=0.8u
+.param HIGH_AVG_START=3u HIGH_AVG_STOP=4u
+.param POST_LOW_START=8u POST_LOW_STOP=9u
+.param RISE_WINDOW_START=0.9u RISE_WINDOW_END=4.9u
+.param FALL_WINDOW_START=4.9u FALL_WINDOW_END=9.9u
+.param MIN_OUTPUT_SWING=1e-6
+
+* -------------------- DESIGN PARAMETERS ----------------------
+* W/L in um; M is dimensionless; IBIAS_A in A. 18 independent inputs.
+.param DESVAR_W1=5.0 DESVAR_L1=0.5
+.param DESVAR_W2=5.0 DESVAR_L2=0.5
+.param DESVAR_W3=5.0 DESVAR_L3=0.5
+.param DESVAR_W4=10.0 DESVAR_L4=0.5
+.param DESVAR_W5=5.0 DESVAR_L5=0.5
+.param DESVAR_W6=10.0 DESVAR_L6=0.5
+.param DESVAR_W7=20.0 DESVAR_L7=0.5
+.param DESVAR_M0=5
+.param DESVAR_M1=1
+.param DESVAR_M2=1
+.param IBIAS_A=5e-6
+
+.csparam export_desvar_w1={DESVAR_W1}
+.csparam export_desvar_l1={DESVAR_L1}
+.csparam export_desvar_w2={DESVAR_W2}
+.csparam export_desvar_l2={DESVAR_L2}
+.csparam export_desvar_w3={DESVAR_W3}
+.csparam export_desvar_l3={DESVAR_L3}
+.csparam export_desvar_w4={DESVAR_W4}
+.csparam export_desvar_l4={DESVAR_L4}
+.csparam export_desvar_w5={DESVAR_W5}
+.csparam export_desvar_l5={DESVAR_L5}
+.csparam export_desvar_w6={DESVAR_W6}
+.csparam export_desvar_l6={DESVAR_L6}
+.csparam export_desvar_w7={DESVAR_W7}
+.csparam export_desvar_l7={DESVAR_L7}
+.csparam export_desvar_m0={DESVAR_M0}
+.csparam export_desvar_m1={DESVAR_M1}
+.csparam export_desvar_m2={DESVAR_M2}
+.csparam export_ibias_a={IBIAS_A}
+.csparam export_supply_vdd={SUPPLY_VDD}
+.csparam export_supply_vss={SUPPLY_VSS}
+.csparam export_input_vcm={INPUT_VCM}
+.csparam export_input_vdiff={INPUT_VDIFF}
+.csparam export_load_c={LOAD_C}
+.csparam export_ac_density={AC_DENSITY}
+.csparam export_ac_start_hz={AC_START_HZ}
+.csparam export_ac_stop_hz={AC_STOP_HZ}
+.csparam export_ref_hz={REF_HZ}
+.csparam export_sr_diff_low={SR_DIFF_LOW}
+.csparam export_sr_diff_high={SR_DIFF_HIGH}
+
+.csparam cfg_ac_density={AC_DENSITY}
+.csparam cfg_ac_start={AC_START_HZ}
+.csparam cfg_ac_stop={AC_STOP_HZ}
+.csparam cfg_ref_hz={REF_HZ}
+.csparam cfg_tran_step={TRAN_STEP}
+.csparam cfg_tran_stop={TRAN_STOP}
+.csparam cfg_tran_max_step={TRAN_MAX_STEP}
+.csparam cfg_low_start={LOW_AVG_START}
+.csparam cfg_low_stop={LOW_AVG_STOP}
+.csparam cfg_high_start={HIGH_AVG_START}
+.csparam cfg_high_stop={HIGH_AVG_STOP}
+.csparam cfg_post_low_start={POST_LOW_START}
+.csparam cfg_post_low_stop={POST_LOW_STOP}
+.csparam cfg_rise_start={RISE_WINDOW_START}
+.csparam cfg_rise_end={RISE_WINDOW_END}
+.csparam cfg_fall_start={FALL_WINDOW_START}
+.csparam cfg_fall_end={FALL_WINDOW_END}
+.csparam cfg_min_swing={MIN_OUTPUT_SWING}
+
+* ------------------------ DUT --------------------------------
+.subckt DUT VINP VINN VOUT VDD VSS
+
+XPM9 VB2 NET1 VDD VDD sky130_fd_pr__pfet_01v8 W={DESVAR_W1} L={DESVAR_L1} m=1
+XPM8 VB3 NET1 VDD VDD sky130_fd_pr__pfet_01v8 W={DESVAR_W1} L={DESVAR_L1} m=1
+XPM7 NET1 NET1 VDD VDD sky130_fd_pr__pfet_01v8 W={DESVAR_W1} L={DESVAR_L1} m=1
+XPM6 NET9 NET1 VDD VDD sky130_fd_pr__pfet_01v8 W={DESVAR_W1} L={DESVAR_L1} m={2*DESVAR_M1}
+XPM5 NET27 VINN NET9 VDD sky130_fd_pr__pfet_01v8 W={DESVAR_W4} L={DESVAR_L4} m={DESVAR_M1}
+XPM4 NET24 VINP NET9 VDD sky130_fd_pr__pfet_01v8 W={DESVAR_W4} L={DESVAR_L4} m={DESVAR_M1}
+XPM3 NET35 NET18 VDD VDD sky130_fd_pr__pfet_01v8 W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M2}
+XPM2 NET18 NET18 VDD VDD sky130_fd_pr__pfet_01v8 W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M2}
+XPM1 NET34 NET34 NET18 VDD sky130_fd_pr__pfet_01v8 W={DESVAR_W6} L={DESVAR_L6} m={DESVAR_M2}
+XPM0 VOUT NET34 NET35 VDD sky130_fd_pr__pfet_01v8 W={DESVAR_W6} L={DESVAR_L6} m={DESVAR_M2}
+
+XNM6 NET2 VB2 VSS VSS sky130_fd_pr__nfet_01v8 W={DESVAR_W3} L={DESVAR_L3} m=1
+XNM5 VB2 VB2 NET2 VSS sky130_fd_pr__nfet_01v8 W={DESVAR_W3} L={DESVAR_L3} m={DESVAR_M0}
+XNM4 VB3 VB3 VSS VSS sky130_fd_pr__nfet_01v8 W={DESVAR_W2} L={DESVAR_L2} m=1
+XNM3 NET24 VB3 VSS VSS sky130_fd_pr__nfet_01v8 W={DESVAR_W2} L={DESVAR_L2} m={DESVAR_M1+DESVAR_M2}
+XNM2 NET27 VB3 VSS VSS sky130_fd_pr__nfet_01v8 W={DESVAR_W2} L={DESVAR_L2} m={DESVAR_M1+DESVAR_M2}
+XNM1 NET34 VB2 NET24 VSS sky130_fd_pr__nfet_01v8 W={DESVAR_W5} L={DESVAR_L5} m={DESVAR_M2}
+XNM0 VOUT VB2 NET27 VSS sky130_fd_pr__nfet_01v8 W={DESVAR_W5} L={DESVAR_L5} m={DESVAR_M2}
+
+IBIAS_SRC NET1 VSS DC {IBIAS_A}
+
+.ends DUT
+
+* ---------------- OPEN-LOOP DIFFERENTIAL GAIN -----------------
+VDD_DM VDD_DM 0 DC {SUPPLY_VDD}
+VSS_DM VSS_DM 0 DC {SUPPLY_VSS}
+VINP_DM INP_DM 0 DC {INPUT_VCM+INPUT_VDIFF/2} AC 0.5 0
+VINN_DM INN_DM 0 DC {INPUT_VCM-INPUT_VDIFF/2} AC 0.5 180
+XDUT_DM INP_DM INN_DM OUT_DM VDD_DM VSS_DM DUT
+CLOAD_DM OUT_DM 0 {LOAD_C}
+
+* ---------------- OPEN-LOOP COMMON-MODE GAIN ------------------
+* This instance provides the quiet DC snapshot and rail power.
+VDD_Q VDD_Q 0 DC {SUPPLY_VDD}
+VSS_Q VSS_Q 0 DC {SUPPLY_VSS}
+VINP_CM INP_CM 0 DC {INPUT_VCM+INPUT_VDIFF/2} AC 1 0
+VINN_CM INN_CM 0 DC {INPUT_VCM-INPUT_VDIFF/2} AC 1 0
+XDUT_CM INP_CM INN_CM OUT_CM VDD_Q VSS_Q DUT
+CLOAD_CM OUT_CM 0 {LOAD_C}
+
+* ---------------- OPEN-LOOP POSITIVE-SUPPLY GAIN --------------
+VDD_P VDD_P 0 DC {SUPPLY_VDD} AC 1
+VSS_P VSS_P 0 DC {SUPPLY_VSS}
+VINP_P INP_P 0 DC {INPUT_VCM+INPUT_VDIFF/2}
+VINN_P INN_P 0 DC {INPUT_VCM-INPUT_VDIFF/2}
+XDUT_P INP_P INN_P OUT_P VDD_P VSS_P DUT
+CLOAD_P OUT_P 0 {LOAD_C}
+
+* ---------------- OPEN-LOOP NEGATIVE-SUPPLY GAIN --------------
+VDD_N VDD_N 0 DC {SUPPLY_VDD}
+VSS_N VSS_N 0 DC {SUPPLY_VSS} AC 1
+VINP_N INP_N 0 DC {INPUT_VCM+INPUT_VDIFF/2}
+VINN_N INN_N 0 DC {INPUT_VCM-INPUT_VDIFF/2}
+XDUT_N INP_N INN_N OUT_N VDD_N VSS_N DUT
+CLOAD_N OUT_N 0 {LOAD_C}
+
+* ---------------- OPEN-LOOP DIFFERENTIAL STEP ----------------
+VDD_SR VDD_SR 0 DC {SUPPLY_VDD}
+VSS_SR VSS_SR 0 DC {SUPPLY_VSS}
+VINP_SR INP_SR 0 DC {INPUT_VCM+INPUT_VDIFF/2} PULSE({INPUT_VCM+(INPUT_VDIFF+SR_DIFF_LOW)/2} {INPUT_VCM+(INPUT_VDIFF+SR_DIFF_HIGH)/2} {SR_DELAY} {SR_INPUT_TR} {SR_INPUT_TF} {SR_WIDTH} {SR_PERIOD})
+VINN_SR INN_SR 0 DC {INPUT_VCM-INPUT_VDIFF/2} PULSE({INPUT_VCM-(INPUT_VDIFF+SR_DIFF_LOW)/2} {INPUT_VCM-(INPUT_VDIFF+SR_DIFF_HIGH)/2} {SR_DELAY} {SR_INPUT_TR} {SR_INPUT_TF} {SR_WIDTH} {SR_PERIOD})
+XDUT_SR INP_SR INN_SR OUT_SR VDD_SR VSS_SR DUT
+CLOAD_SR OUT_SR 0 {LOAD_C}
+
+.control
+set noaskquit
+set units=radians
+set numdgt=15
+option numdgt=15
+set filetype=ascii
+
+set result_file=opamp0_openloop_metrics.txt
+set m_gain=nan
+set m_ugf=nan
+set m_pm=nan
+set m_cmrr=nan
+set m_psrr_plus=nan
+set m_psrr_minus=nan
+set m_slew_rise=nan
+set m_slew_fall=nan
+set m_power=nan
+set m_loop_ugf=nan
+
+echo "DC_Gain_dB,UGF_Hz,Phase_Margin_deg,CMRR_dB,PSRR_Plus_dB,PSRR_Minus_dB,Slew_Rise_V_us,Slew_Fall_V_us,Power_Quiescent_uW" > $result_file
+echo "$m_gain,$m_ugf,$m_pm,$m_cmrr,$m_psrr_plus,$m_psrr_minus,$m_slew_rise,$m_slew_fall,$m_power" >> $result_file
+
+* ----------------------- DC SNAPSHOT -------------------------
+op
+let power_uw=-(v(VDD_Q)*i(VDD_Q)+v(VSS_Q)*i(VSS_Q))*1e6
+set m_power=$&power_uw
+
+let input_differential_v=v(INP_CM)-v(INN_CM)
+let output_minus_vinp_v=v(OUT_CM)-v(INP_CM)
+let dm_cm_bias_difference_v=v(OUT_DM)-v(OUT_CM)
+let output_headroom_low_v=v(OUT_CM)-v(VSS_Q)
+let output_headroom_high_v=v(VDD_Q)-v(OUT_CM)
+
+print v(INP_CM) v(INN_CM) v(OUT_CM) power_uw
+print input_differential_v dm_cm_bias_difference_v
+print output_headroom_low_v output_headroom_high_v
+
+let op_input_desvar_w1=const.export_desvar_w1
+let op_input_desvar_l1=const.export_desvar_l1
+let op_input_desvar_w2=const.export_desvar_w2
+let op_input_desvar_l2=const.export_desvar_l2
+let op_input_desvar_w3=const.export_desvar_w3
+let op_input_desvar_l3=const.export_desvar_l3
+let op_input_desvar_w4=const.export_desvar_w4
+let op_input_desvar_l4=const.export_desvar_l4
+let op_input_desvar_w5=const.export_desvar_w5
+let op_input_desvar_l5=const.export_desvar_l5
+let op_input_desvar_w6=const.export_desvar_w6
+let op_input_desvar_l6=const.export_desvar_l6
+let op_input_desvar_w7=const.export_desvar_w7
+let op_input_desvar_l7=const.export_desvar_l7
+let op_input_desvar_m0=const.export_desvar_m0
+let op_input_desvar_m1=const.export_desvar_m1
+let op_input_desvar_m2=const.export_desvar_m2
+let op_input_ibias_a=const.export_ibias_a
+let op_input_supply_vdd=const.export_supply_vdd
+let op_input_supply_vss=const.export_supply_vss
+let op_input_input_vcm=const.export_input_vcm
+let op_input_input_vdiff=const.export_input_vdiff
+let op_input_load_c=const.export_load_c
+let op_input_ac_density=const.export_ac_density
+let op_input_ac_start_hz=const.export_ac_start_hz
+let op_input_ac_stop_hz=const.export_ac_stop_hz
+let op_input_ref_hz=const.export_ref_hz
+let op_input_sr_diff_low=const.export_sr_diff_low
+let op_input_sr_diff_high=const.export_sr_diff_high
+
+* Model states are queried before any AC or transient analysis.
+* w/l are model values in metres; native id/gm/capacitances include m.
+foreach dev xpm9 xpm8 xpm7 xpm6 xpm5 xpm4 xpm3 xpm2 xpm1 xpm0
+    foreach quantity w l m id gm gds gmbs vth vdsat cgg cgs cgd cgb cdg cdd cds cdb csg csd css csb cbg cbd cbs cbb capbd capbs qg qb qd qs
+        let op_{$dev}_{$quantity}=@m.xdut_cm.{$dev}.msky130_fd_pr__pfet_01v8[{$quantity}]
+    end
+end
+
+foreach dev xnm6 xnm5 xnm4 xnm3 xnm2 xnm1 xnm0
+    foreach quantity w l m id gm gds gmbs vth vdsat cgg cgs cgd cgb cdg cdd cds cdb csg csd css csb cbg cbd cbs cbb capbd capbs qg qb qd qs
+        let op_{$dev}_{$quantity}=@m.xdut_cm.{$dev}.msky130_fd_pr__nfet_01v8[{$quantity}]
+    end
+end
+
+write opamp0_openloop_dc.raw all
+destroy $curplot
+
+* ----------------------- AC METRICS --------------------------
+ac dec $&cfg_ac_density $&cfg_ac_start $&cfg_ac_stop
+
+let ad=v(OUT_DM)/(v(INP_DM)-v(INN_DM))
+let acm=v(OUT_CM)/(0.5*(v(INP_CM)+v(INN_CM)))
+let ap=v(OUT_P)/v(VDD_P)
+let an=v(OUT_N)/v(VSS_N)
+
+let ad_mag=mag(ad)
+let acm_mag=mag(acm)
+let ap_mag=mag(ap)
+let an_mag=mag(an)
+
+meas ac ad_ref FIND ad_mag AT=$&cfg_ref_hz
+meas ac acm_ref FIND acm_mag AT=$&cfg_ref_hz
+meas ac ap_ref FIND ap_mag AT=$&cfg_ref_hz
+meas ac an_ref FIND an_mag AT=$&cfg_ref_hz
+
+if ad_ref > 0
+    let gain_db=20*log10(ad_ref)
+    set m_gain=$&gain_db
+
+    if acm_ref > 0
+        let cmrr_db=20*log10(ad_ref/acm_ref)
+        set m_cmrr=$&cmrr_db
+    else
+        set m_cmrr=inf
+    end
+
+    if ap_ref > 0
+        let psrr_p_db=20*log10(ad_ref/ap_ref)
+        set m_psrr_plus=$&psrr_p_db
+    else
+        set m_psrr_plus=inf
+    end
+
+    if an_ref > 0
+        let psrr_n_db=20*log10(ad_ref/an_ref)
+        set m_psrr_minus=$&psrr_n_db
+    else
+        set m_psrr_minus=inf
+    end
+else
+    set m_gain=-inf
+end
+
+* Hypothetical unity-feedback return gain at this SAME open-loop bias.
+* gp=Ad+Acm/2; gn=-Ad+Acm/2; T=-gn=Ad-Acm/2.
+let loop_gain=ad-0.5*acm
+let cross_mode=0
+
+foreach response ad loop_gain
+    let response_vec={$response}
+    let gain_mag=mag(response_vec)
+    let phase_deg=180/pi*cph(response_vec)
+    let phase_origin=phase_deg[0]
+
+    while phase_origin > 180
+        let phase_deg=phase_deg-360
+        let phase_origin=phase_origin-360
+    end
+
+    while phase_origin < -180
+        let phase_deg=phase_deg+360
+        let phase_origin=phase_origin+360
+    end
+
+    let ac_index=1
+    let first_fall=-1
+    let falling_crossings=0
+    let ac_count=length(frequency)
+
+    while ac_index < ac_count
+        if gain_mag[ac_index-1] >= 1
+            if gain_mag[ac_index] < 1
+                let falling_crossings=falling_crossings+1
+                if first_fall < 0
+                    let first_fall=ac_index
+                end
+            end
+        end
+        let ac_index=ac_index+1
+    end
+
+    if first_fall > 0
+        let i_hi=first_fall
+        let i_lo=first_fall-1
+
+        if gain_mag[i_hi] > 0
+            let db_lo=20*log10(gain_mag[i_lo])
+            let db_hi=20*log10(gain_mag[i_hi])
+            let fraction=-db_lo/(db_hi-db_lo)
+            let cross_hz=exp(log(frequency[i_lo])+fraction*(log(frequency[i_hi])-log(frequency[i_lo])))
+
+            if cross_mode = 0
+                set m_ugf=$&cross_hz
+            else
+                set m_loop_ugf=$&cross_hz
+                if real(response_vec[0]) > 0
+                    let pm_deg=180+phase_deg[i_lo]+fraction*(phase_deg[i_hi]-phase_deg[i_lo])
+                    set m_pm=$&pm_deg
+                end
+            end
+        end
+    end
+
+    echo Unity crossings for $response : $&falling_crossings
+    let cross_mode=cross_mode+1
+end
+
+echo "Differential_UGF_Hz,Loop_UGF_Hz,Phase_Margin_est_deg" > opamp0_openloop_stability.txt
+echo "$m_ugf,$m_loop_ugf,$m_pm" >> opamp0_openloop_stability.txt
+
+write opamp0_openloop_ac.raw frequency ad acm ap an loop_gain
+
+echo "DC_Gain_dB,UGF_Hz,Phase_Margin_deg,CMRR_dB,PSRR_Plus_dB,PSRR_Minus_dB,Slew_Rise_V_us,Slew_Fall_V_us,Power_Quiescent_uW" > $result_file
+echo "$m_gain,$m_ugf,$m_pm,$m_cmrr,$m_psrr_plus,$m_psrr_minus,$m_slew_rise,$m_slew_fall,$m_power" >> $result_file
+
+* ------------------ OPEN-LOOP OUTPUT TRANSITIONS --------------
+tran $&cfg_tran_step $&cfg_tran_stop 0 $&cfg_tran_max_step
+
+let sr_output=v(OUT_SR)
+meas tran output_low AVG v(OUT_SR) FROM=$&cfg_low_start TO=$&cfg_low_stop
+meas tran output_high AVG v(OUT_SR) FROM=$&cfg_high_start TO=$&cfg_high_stop
+meas tran output_low_post AVG v(OUT_SR) FROM=$&cfg_post_low_start TO=$&cfg_post_low_stop
+
+let rise_swing=output_high-output_low
+let fall_swing=output_high-output_low_post
+let edge_mode=0
+
+foreach edge rise fall
+    let t_first=-1
+    let t_second=-1
+
+    if edge_mode = 0
+        let swing=rise_swing
+        let level_first=output_low+0.1*swing
+        let level_second=output_low+0.9*swing
+        let window_start=cfg_rise_start
+        let window_end=cfg_rise_end
+    else
+        let swing=fall_swing
+        let level_first=output_low_post+0.9*swing
+        let level_second=output_low_post+0.1*swing
+        let window_start=cfg_fall_start
+        let window_end=cfg_fall_end
+    end
+
+    if swing > cfg_min_swing
+        let idx=1
+        let ntime=length(time)
+
+        while idx < ntime
+            let v0=sr_output[idx-1]
+            let v1=sr_output[idx]
+            let t0=time[idx-1]
+            let t1=time[idx]
+            let direction_ok=0
+
+            if edge_mode = 0
+                if v1 > v0
+                    let direction_ok=1
+                end
+            else
+                if v1 < v0
+                    let direction_ok=1
+                end
+            end
+
+            if t0 >= window_start
+                if t1 <= window_end
+                    if direction_ok > 0
+                        if t_first < 0
+                            if (v0-level_first)*(v1-level_first) <= 0
+                                let t_first=t0+(level_first-v0)*(t1-t0)/(v1-v0)
+                            end
+                        end
+
+                        if t_second < 0
+                            if (v0-level_second)*(v1-level_second) <= 0
+                                let t_second=t0+(level_second-v0)*(t1-t0)/(v1-v0)
+                            end
+                        end
+                    end
+                end
+            end
+
+            let idx=idx+1
+        end
+
+        if t_first >= 0
+            if t_second > t_first
+                let rate_v_us=0.8*swing/(t_second-t_first)/1e6
+
+                if edge_mode = 0
+                    set m_slew_rise=$&rate_v_us
+                else
+                    set m_slew_fall=$&rate_v_us
+                end
+            end
+        end
+    end
+
+    echo Open-loop $edge crossing times: $&t_first $&t_second
+    let edge_mode=edge_mode+1
+end
+
+print output_low output_high output_low_post rise_swing fall_swing
+write opamp0_openloop_tran.raw time v(INP_SR) v(INN_SR) v(OUT_SR)
+
+echo "DC_Gain_dB,UGF_Hz,Phase_Margin_deg,CMRR_dB,PSRR_Plus_dB,PSRR_Minus_dB,Slew_Rise_V_us,Slew_Fall_V_us,Power_Quiescent_uW" > $result_file
+echo "$m_gain,$m_ugf,$m_pm,$m_cmrr,$m_psrr_plus,$m_psrr_minus,$m_slew_rise,$m_slew_fall,$m_power" >> $result_file
+
+echo Metrics saved to $result_file
+shell python3 opamp0_export_open_loop.py --netlist Opamp0_open_loop.cir
+quit
+.endc
+.end

@@ -1,0 +1,1833 @@
+Title: opamp0 - fully open-loop nine-metric testbench
+Date: Sat Oct 10 11:27:10  2026
+Plotname: Operating Point
+Flags: real
+No. Variables: 912
+No. Points: 1
+Variables:
+	0	v(vdd_dm)	voltage
+	1	dm_cm_bias_difference_v	notype
+	2	v(inn_cm)	voltage
+	3	v(inn_dm)	voltage
+	4	v(inn_n)	voltage
+	5	v(inn_p)	voltage
+	6	v(inn_sr)	voltage
+	7	v(inp_cm)	voltage
+	8	v(inp_dm)	voltage
+	9	v(inp_n)	voltage
+	10	v(inp_p)	voltage
+	11	v(inp_sr)	voltage
+	12	input_differential_v	notype
+	13	v(m.xdut_cm.xnm0.msky130_fd_pr__nfet_01v8#body)	voltage
+	14	v(m.xdut_cm.xnm0.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	15	v(m.xdut_cm.xnm0.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	16	v(m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8#body)	voltage
+	17	v(m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	18	v(m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	19	v(m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8#body)	voltage
+	20	v(m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	21	v(m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	22	v(m.xdut_cm.xnm3.msky130_fd_pr__nfet_01v8#body)	voltage
+	23	v(m.xdut_cm.xnm3.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	24	v(m.xdut_cm.xnm3.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	25	v(m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8#body)	voltage
+	26	v(m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	27	v(m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	28	v(m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8#body)	voltage
+	29	v(m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	30	v(m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	31	v(m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8#body)	voltage
+	32	v(m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	33	v(m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	34	v(m.xdut_cm.xpm0.msky130_fd_pr__pfet_01v8#body)	voltage
+	35	v(m.xdut_cm.xpm0.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	36	v(m.xdut_cm.xpm0.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	37	v(m.xdut_cm.xpm1.msky130_fd_pr__pfet_01v8#body)	voltage
+	38	v(m.xdut_cm.xpm1.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	39	v(m.xdut_cm.xpm1.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	40	v(m.xdut_cm.xpm2.msky130_fd_pr__pfet_01v8#body)	voltage
+	41	v(m.xdut_cm.xpm2.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	42	v(m.xdut_cm.xpm2.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	43	v(m.xdut_cm.xpm3.msky130_fd_pr__pfet_01v8#body)	voltage
+	44	v(m.xdut_cm.xpm3.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	45	v(m.xdut_cm.xpm3.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	46	v(m.xdut_cm.xpm4.msky130_fd_pr__pfet_01v8#body)	voltage
+	47	v(m.xdut_cm.xpm4.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	48	v(m.xdut_cm.xpm4.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	49	v(m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8#body)	voltage
+	50	v(m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	51	v(m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	52	v(m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8#body)	voltage
+	53	v(m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	54	v(m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	55	v(m.xdut_cm.xpm7.msky130_fd_pr__pfet_01v8#body)	voltage
+	56	v(m.xdut_cm.xpm7.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	57	v(m.xdut_cm.xpm7.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	58	v(m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8#body)	voltage
+	59	v(m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	60	v(m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	61	v(m.xdut_cm.xpm9.msky130_fd_pr__pfet_01v8#body)	voltage
+	62	v(m.xdut_cm.xpm9.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	63	v(m.xdut_cm.xpm9.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	64	v(m.xdut_dm.xnm0.msky130_fd_pr__nfet_01v8#body)	voltage
+	65	v(m.xdut_dm.xnm0.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	66	v(m.xdut_dm.xnm0.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	67	v(m.xdut_dm.xnm1.msky130_fd_pr__nfet_01v8#body)	voltage
+	68	v(m.xdut_dm.xnm1.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	69	v(m.xdut_dm.xnm1.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	70	v(m.xdut_dm.xnm2.msky130_fd_pr__nfet_01v8#body)	voltage
+	71	v(m.xdut_dm.xnm2.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	72	v(m.xdut_dm.xnm2.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	73	v(m.xdut_dm.xnm3.msky130_fd_pr__nfet_01v8#body)	voltage
+	74	v(m.xdut_dm.xnm3.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	75	v(m.xdut_dm.xnm3.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	76	v(m.xdut_dm.xnm4.msky130_fd_pr__nfet_01v8#body)	voltage
+	77	v(m.xdut_dm.xnm4.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	78	v(m.xdut_dm.xnm4.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	79	v(m.xdut_dm.xnm5.msky130_fd_pr__nfet_01v8#body)	voltage
+	80	v(m.xdut_dm.xnm5.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	81	v(m.xdut_dm.xnm5.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	82	v(m.xdut_dm.xnm6.msky130_fd_pr__nfet_01v8#body)	voltage
+	83	v(m.xdut_dm.xnm6.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	84	v(m.xdut_dm.xnm6.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	85	v(m.xdut_dm.xpm0.msky130_fd_pr__pfet_01v8#body)	voltage
+	86	v(m.xdut_dm.xpm0.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	87	v(m.xdut_dm.xpm0.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	88	v(m.xdut_dm.xpm1.msky130_fd_pr__pfet_01v8#body)	voltage
+	89	v(m.xdut_dm.xpm1.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	90	v(m.xdut_dm.xpm1.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	91	v(m.xdut_dm.xpm2.msky130_fd_pr__pfet_01v8#body)	voltage
+	92	v(m.xdut_dm.xpm2.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	93	v(m.xdut_dm.xpm2.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	94	v(m.xdut_dm.xpm3.msky130_fd_pr__pfet_01v8#body)	voltage
+	95	v(m.xdut_dm.xpm3.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	96	v(m.xdut_dm.xpm3.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	97	v(m.xdut_dm.xpm4.msky130_fd_pr__pfet_01v8#body)	voltage
+	98	v(m.xdut_dm.xpm4.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	99	v(m.xdut_dm.xpm4.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	100	v(m.xdut_dm.xpm5.msky130_fd_pr__pfet_01v8#body)	voltage
+	101	v(m.xdut_dm.xpm5.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	102	v(m.xdut_dm.xpm5.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	103	v(m.xdut_dm.xpm6.msky130_fd_pr__pfet_01v8#body)	voltage
+	104	v(m.xdut_dm.xpm6.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	105	v(m.xdut_dm.xpm6.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	106	v(m.xdut_dm.xpm7.msky130_fd_pr__pfet_01v8#body)	voltage
+	107	v(m.xdut_dm.xpm7.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	108	v(m.xdut_dm.xpm7.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	109	v(m.xdut_dm.xpm8.msky130_fd_pr__pfet_01v8#body)	voltage
+	110	v(m.xdut_dm.xpm8.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	111	v(m.xdut_dm.xpm8.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	112	v(m.xdut_dm.xpm9.msky130_fd_pr__pfet_01v8#body)	voltage
+	113	v(m.xdut_dm.xpm9.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	114	v(m.xdut_dm.xpm9.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	115	v(m.xdut_n.xnm0.msky130_fd_pr__nfet_01v8#body)	voltage
+	116	v(m.xdut_n.xnm0.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	117	v(m.xdut_n.xnm0.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	118	v(m.xdut_n.xnm1.msky130_fd_pr__nfet_01v8#body)	voltage
+	119	v(m.xdut_n.xnm1.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	120	v(m.xdut_n.xnm1.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	121	v(m.xdut_n.xnm2.msky130_fd_pr__nfet_01v8#body)	voltage
+	122	v(m.xdut_n.xnm2.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	123	v(m.xdut_n.xnm2.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	124	v(m.xdut_n.xnm3.msky130_fd_pr__nfet_01v8#body)	voltage
+	125	v(m.xdut_n.xnm3.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	126	v(m.xdut_n.xnm3.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	127	v(m.xdut_n.xnm4.msky130_fd_pr__nfet_01v8#body)	voltage
+	128	v(m.xdut_n.xnm4.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	129	v(m.xdut_n.xnm4.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	130	v(m.xdut_n.xnm5.msky130_fd_pr__nfet_01v8#body)	voltage
+	131	v(m.xdut_n.xnm5.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	132	v(m.xdut_n.xnm5.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	133	v(m.xdut_n.xnm6.msky130_fd_pr__nfet_01v8#body)	voltage
+	134	v(m.xdut_n.xnm6.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	135	v(m.xdut_n.xnm6.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	136	v(m.xdut_n.xpm0.msky130_fd_pr__pfet_01v8#body)	voltage
+	137	v(m.xdut_n.xpm0.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	138	v(m.xdut_n.xpm0.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	139	v(m.xdut_n.xpm1.msky130_fd_pr__pfet_01v8#body)	voltage
+	140	v(m.xdut_n.xpm1.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	141	v(m.xdut_n.xpm1.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	142	v(m.xdut_n.xpm2.msky130_fd_pr__pfet_01v8#body)	voltage
+	143	v(m.xdut_n.xpm2.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	144	v(m.xdut_n.xpm2.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	145	v(m.xdut_n.xpm3.msky130_fd_pr__pfet_01v8#body)	voltage
+	146	v(m.xdut_n.xpm3.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	147	v(m.xdut_n.xpm3.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	148	v(m.xdut_n.xpm4.msky130_fd_pr__pfet_01v8#body)	voltage
+	149	v(m.xdut_n.xpm4.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	150	v(m.xdut_n.xpm4.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	151	v(m.xdut_n.xpm5.msky130_fd_pr__pfet_01v8#body)	voltage
+	152	v(m.xdut_n.xpm5.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	153	v(m.xdut_n.xpm5.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	154	v(m.xdut_n.xpm6.msky130_fd_pr__pfet_01v8#body)	voltage
+	155	v(m.xdut_n.xpm6.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	156	v(m.xdut_n.xpm6.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	157	v(m.xdut_n.xpm7.msky130_fd_pr__pfet_01v8#body)	voltage
+	158	v(m.xdut_n.xpm7.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	159	v(m.xdut_n.xpm7.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	160	v(m.xdut_n.xpm8.msky130_fd_pr__pfet_01v8#body)	voltage
+	161	v(m.xdut_n.xpm8.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	162	v(m.xdut_n.xpm8.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	163	v(m.xdut_n.xpm9.msky130_fd_pr__pfet_01v8#body)	voltage
+	164	v(m.xdut_n.xpm9.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	165	v(m.xdut_n.xpm9.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	166	v(m.xdut_p.xnm0.msky130_fd_pr__nfet_01v8#body)	voltage
+	167	v(m.xdut_p.xnm0.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	168	v(m.xdut_p.xnm0.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	169	v(m.xdut_p.xnm1.msky130_fd_pr__nfet_01v8#body)	voltage
+	170	v(m.xdut_p.xnm1.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	171	v(m.xdut_p.xnm1.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	172	v(m.xdut_p.xnm2.msky130_fd_pr__nfet_01v8#body)	voltage
+	173	v(m.xdut_p.xnm2.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	174	v(m.xdut_p.xnm2.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	175	v(m.xdut_p.xnm3.msky130_fd_pr__nfet_01v8#body)	voltage
+	176	v(m.xdut_p.xnm3.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	177	v(m.xdut_p.xnm3.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	178	v(m.xdut_p.xnm4.msky130_fd_pr__nfet_01v8#body)	voltage
+	179	v(m.xdut_p.xnm4.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	180	v(m.xdut_p.xnm4.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	181	v(m.xdut_p.xnm5.msky130_fd_pr__nfet_01v8#body)	voltage
+	182	v(m.xdut_p.xnm5.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	183	v(m.xdut_p.xnm5.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	184	v(m.xdut_p.xnm6.msky130_fd_pr__nfet_01v8#body)	voltage
+	185	v(m.xdut_p.xnm6.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	186	v(m.xdut_p.xnm6.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	187	v(m.xdut_p.xpm0.msky130_fd_pr__pfet_01v8#body)	voltage
+	188	v(m.xdut_p.xpm0.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	189	v(m.xdut_p.xpm0.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	190	v(m.xdut_p.xpm1.msky130_fd_pr__pfet_01v8#body)	voltage
+	191	v(m.xdut_p.xpm1.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	192	v(m.xdut_p.xpm1.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	193	v(m.xdut_p.xpm2.msky130_fd_pr__pfet_01v8#body)	voltage
+	194	v(m.xdut_p.xpm2.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	195	v(m.xdut_p.xpm2.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	196	v(m.xdut_p.xpm3.msky130_fd_pr__pfet_01v8#body)	voltage
+	197	v(m.xdut_p.xpm3.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	198	v(m.xdut_p.xpm3.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	199	v(m.xdut_p.xpm4.msky130_fd_pr__pfet_01v8#body)	voltage
+	200	v(m.xdut_p.xpm4.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	201	v(m.xdut_p.xpm4.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	202	v(m.xdut_p.xpm5.msky130_fd_pr__pfet_01v8#body)	voltage
+	203	v(m.xdut_p.xpm5.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	204	v(m.xdut_p.xpm5.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	205	v(m.xdut_p.xpm6.msky130_fd_pr__pfet_01v8#body)	voltage
+	206	v(m.xdut_p.xpm6.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	207	v(m.xdut_p.xpm6.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	208	v(m.xdut_p.xpm7.msky130_fd_pr__pfet_01v8#body)	voltage
+	209	v(m.xdut_p.xpm7.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	210	v(m.xdut_p.xpm7.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	211	v(m.xdut_p.xpm8.msky130_fd_pr__pfet_01v8#body)	voltage
+	212	v(m.xdut_p.xpm8.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	213	v(m.xdut_p.xpm8.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	214	v(m.xdut_p.xpm9.msky130_fd_pr__pfet_01v8#body)	voltage
+	215	v(m.xdut_p.xpm9.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	216	v(m.xdut_p.xpm9.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	217	v(m.xdut_sr.xnm0.msky130_fd_pr__nfet_01v8#body)	voltage
+	218	v(m.xdut_sr.xnm0.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	219	v(m.xdut_sr.xnm0.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	220	v(m.xdut_sr.xnm1.msky130_fd_pr__nfet_01v8#body)	voltage
+	221	v(m.xdut_sr.xnm1.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	222	v(m.xdut_sr.xnm1.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	223	v(m.xdut_sr.xnm2.msky130_fd_pr__nfet_01v8#body)	voltage
+	224	v(m.xdut_sr.xnm2.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	225	v(m.xdut_sr.xnm2.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	226	v(m.xdut_sr.xnm3.msky130_fd_pr__nfet_01v8#body)	voltage
+	227	v(m.xdut_sr.xnm3.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	228	v(m.xdut_sr.xnm3.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	229	v(m.xdut_sr.xnm4.msky130_fd_pr__nfet_01v8#body)	voltage
+	230	v(m.xdut_sr.xnm4.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	231	v(m.xdut_sr.xnm4.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	232	v(m.xdut_sr.xnm5.msky130_fd_pr__nfet_01v8#body)	voltage
+	233	v(m.xdut_sr.xnm5.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	234	v(m.xdut_sr.xnm5.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	235	v(m.xdut_sr.xnm6.msky130_fd_pr__nfet_01v8#body)	voltage
+	236	v(m.xdut_sr.xnm6.msky130_fd_pr__nfet_01v8#dbody)	voltage
+	237	v(m.xdut_sr.xnm6.msky130_fd_pr__nfet_01v8#sbody)	voltage
+	238	v(m.xdut_sr.xpm0.msky130_fd_pr__pfet_01v8#body)	voltage
+	239	v(m.xdut_sr.xpm0.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	240	v(m.xdut_sr.xpm0.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	241	v(m.xdut_sr.xpm1.msky130_fd_pr__pfet_01v8#body)	voltage
+	242	v(m.xdut_sr.xpm1.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	243	v(m.xdut_sr.xpm1.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	244	v(m.xdut_sr.xpm2.msky130_fd_pr__pfet_01v8#body)	voltage
+	245	v(m.xdut_sr.xpm2.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	246	v(m.xdut_sr.xpm2.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	247	v(m.xdut_sr.xpm3.msky130_fd_pr__pfet_01v8#body)	voltage
+	248	v(m.xdut_sr.xpm3.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	249	v(m.xdut_sr.xpm3.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	250	v(m.xdut_sr.xpm4.msky130_fd_pr__pfet_01v8#body)	voltage
+	251	v(m.xdut_sr.xpm4.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	252	v(m.xdut_sr.xpm4.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	253	v(m.xdut_sr.xpm5.msky130_fd_pr__pfet_01v8#body)	voltage
+	254	v(m.xdut_sr.xpm5.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	255	v(m.xdut_sr.xpm5.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	256	v(m.xdut_sr.xpm6.msky130_fd_pr__pfet_01v8#body)	voltage
+	257	v(m.xdut_sr.xpm6.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	258	v(m.xdut_sr.xpm6.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	259	v(m.xdut_sr.xpm7.msky130_fd_pr__pfet_01v8#body)	voltage
+	260	v(m.xdut_sr.xpm7.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	261	v(m.xdut_sr.xpm7.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	262	v(m.xdut_sr.xpm8.msky130_fd_pr__pfet_01v8#body)	voltage
+	263	v(m.xdut_sr.xpm8.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	264	v(m.xdut_sr.xpm8.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	265	v(m.xdut_sr.xpm9.msky130_fd_pr__pfet_01v8#body)	voltage
+	266	v(m.xdut_sr.xpm9.msky130_fd_pr__pfet_01v8#dbody)	voltage
+	267	v(m.xdut_sr.xpm9.msky130_fd_pr__pfet_01v8#sbody)	voltage
+	268	op_input_ac_density	notype
+	269	op_input_ac_start_hz	notype
+	270	op_input_ac_stop_hz	notype
+	271	op_input_desvar_l1	notype
+	272	op_input_desvar_l2	notype
+	273	op_input_desvar_l3	notype
+	274	op_input_desvar_l4	notype
+	275	op_input_desvar_l5	notype
+	276	op_input_desvar_l6	notype
+	277	op_input_desvar_l7	notype
+	278	op_input_desvar_m0	notype
+	279	op_input_desvar_m1	notype
+	280	op_input_desvar_m2	notype
+	281	op_input_desvar_w1	notype
+	282	op_input_desvar_w2	notype
+	283	op_input_desvar_w3	notype
+	284	op_input_desvar_w4	notype
+	285	op_input_desvar_w5	notype
+	286	op_input_desvar_w6	notype
+	287	op_input_desvar_w7	notype
+	288	op_input_ibias_a	notype
+	289	op_input_input_vcm	notype
+	290	op_input_input_vdiff	notype
+	291	op_input_load_c	notype
+	292	op_input_ref_hz	notype
+	293	op_input_sr_diff_high	notype
+	294	op_input_sr_diff_low	notype
+	295	op_input_supply_vdd	notype
+	296	op_input_supply_vss	notype
+	297	op_xnm0_capbd	notype
+	298	op_xnm0_capbs	notype
+	299	op_xnm0_cbb	notype
+	300	op_xnm0_cbd	notype
+	301	op_xnm0_cbg	notype
+	302	op_xnm0_cbs	notype
+	303	op_xnm0_cdb	notype
+	304	op_xnm0_cdd	notype
+	305	op_xnm0_cdg	notype
+	306	op_xnm0_cds	notype
+	307	op_xnm0_cgb	notype
+	308	op_xnm0_cgd	notype
+	309	op_xnm0_cgg	notype
+	310	op_xnm0_cgs	notype
+	311	op_xnm0_csb	notype
+	312	op_xnm0_csd	notype
+	313	op_xnm0_csg	notype
+	314	op_xnm0_css	notype
+	315	op_xnm0_gds	notype
+	316	op_xnm0_gm	notype
+	317	op_xnm0_gmbs	notype
+	318	op_xnm0_id	notype
+	319	op_xnm0_l	notype
+	320	op_xnm0_m	notype
+	321	op_xnm0_qb	notype
+	322	op_xnm0_qd	notype
+	323	op_xnm0_qg	notype
+	324	op_xnm0_qs	notype
+	325	op_xnm0_vdsat	notype
+	326	op_xnm0_vth	notype
+	327	op_xnm0_w	notype
+	328	op_xnm1_capbd	notype
+	329	op_xnm1_capbs	notype
+	330	op_xnm1_cbb	notype
+	331	op_xnm1_cbd	notype
+	332	op_xnm1_cbg	notype
+	333	op_xnm1_cbs	notype
+	334	op_xnm1_cdb	notype
+	335	op_xnm1_cdd	notype
+	336	op_xnm1_cdg	notype
+	337	op_xnm1_cds	notype
+	338	op_xnm1_cgb	notype
+	339	op_xnm1_cgd	notype
+	340	op_xnm1_cgg	notype
+	341	op_xnm1_cgs	notype
+	342	op_xnm1_csb	notype
+	343	op_xnm1_csd	notype
+	344	op_xnm1_csg	notype
+	345	op_xnm1_css	notype
+	346	op_xnm1_gds	notype
+	347	op_xnm1_gm	notype
+	348	op_xnm1_gmbs	notype
+	349	op_xnm1_id	notype
+	350	op_xnm1_l	notype
+	351	op_xnm1_m	notype
+	352	op_xnm1_qb	notype
+	353	op_xnm1_qd	notype
+	354	op_xnm1_qg	notype
+	355	op_xnm1_qs	notype
+	356	op_xnm1_vdsat	notype
+	357	op_xnm1_vth	notype
+	358	op_xnm1_w	notype
+	359	op_xnm2_capbd	notype
+	360	op_xnm2_capbs	notype
+	361	op_xnm2_cbb	notype
+	362	op_xnm2_cbd	notype
+	363	op_xnm2_cbg	notype
+	364	op_xnm2_cbs	notype
+	365	op_xnm2_cdb	notype
+	366	op_xnm2_cdd	notype
+	367	op_xnm2_cdg	notype
+	368	op_xnm2_cds	notype
+	369	op_xnm2_cgb	notype
+	370	op_xnm2_cgd	notype
+	371	op_xnm2_cgg	notype
+	372	op_xnm2_cgs	notype
+	373	op_xnm2_csb	notype
+	374	op_xnm2_csd	notype
+	375	op_xnm2_csg	notype
+	376	op_xnm2_css	notype
+	377	op_xnm2_gds	notype
+	378	op_xnm2_gm	notype
+	379	op_xnm2_gmbs	notype
+	380	op_xnm2_id	notype
+	381	op_xnm2_l	notype
+	382	op_xnm2_m	notype
+	383	op_xnm2_qb	notype
+	384	op_xnm2_qd	notype
+	385	op_xnm2_qg	notype
+	386	op_xnm2_qs	notype
+	387	op_xnm2_vdsat	notype
+	388	op_xnm2_vth	notype
+	389	op_xnm2_w	notype
+	390	op_xnm3_capbd	notype
+	391	op_xnm3_capbs	notype
+	392	op_xnm3_cbb	notype
+	393	op_xnm3_cbd	notype
+	394	op_xnm3_cbg	notype
+	395	op_xnm3_cbs	notype
+	396	op_xnm3_cdb	notype
+	397	op_xnm3_cdd	notype
+	398	op_xnm3_cdg	notype
+	399	op_xnm3_cds	notype
+	400	op_xnm3_cgb	notype
+	401	op_xnm3_cgd	notype
+	402	op_xnm3_cgg	notype
+	403	op_xnm3_cgs	notype
+	404	op_xnm3_csb	notype
+	405	op_xnm3_csd	notype
+	406	op_xnm3_csg	notype
+	407	op_xnm3_css	notype
+	408	op_xnm3_gds	notype
+	409	op_xnm3_gm	notype
+	410	op_xnm3_gmbs	notype
+	411	op_xnm3_id	notype
+	412	op_xnm3_l	notype
+	413	op_xnm3_m	notype
+	414	op_xnm3_qb	notype
+	415	op_xnm3_qd	notype
+	416	op_xnm3_qg	notype
+	417	op_xnm3_qs	notype
+	418	op_xnm3_vdsat	notype
+	419	op_xnm3_vth	notype
+	420	op_xnm3_w	notype
+	421	op_xnm4_capbd	notype
+	422	op_xnm4_capbs	notype
+	423	op_xnm4_cbb	notype
+	424	op_xnm4_cbd	notype
+	425	op_xnm4_cbg	notype
+	426	op_xnm4_cbs	notype
+	427	op_xnm4_cdb	notype
+	428	op_xnm4_cdd	notype
+	429	op_xnm4_cdg	notype
+	430	op_xnm4_cds	notype
+	431	op_xnm4_cgb	notype
+	432	op_xnm4_cgd	notype
+	433	op_xnm4_cgg	notype
+	434	op_xnm4_cgs	notype
+	435	op_xnm4_csb	notype
+	436	op_xnm4_csd	notype
+	437	op_xnm4_csg	notype
+	438	op_xnm4_css	notype
+	439	op_xnm4_gds	notype
+	440	op_xnm4_gm	notype
+	441	op_xnm4_gmbs	notype
+	442	op_xnm4_id	notype
+	443	op_xnm4_l	notype
+	444	op_xnm4_m	notype
+	445	op_xnm4_qb	notype
+	446	op_xnm4_qd	notype
+	447	op_xnm4_qg	notype
+	448	op_xnm4_qs	notype
+	449	op_xnm4_vdsat	notype
+	450	op_xnm4_vth	notype
+	451	op_xnm4_w	notype
+	452	op_xnm5_capbd	notype
+	453	op_xnm5_capbs	notype
+	454	op_xnm5_cbb	notype
+	455	op_xnm5_cbd	notype
+	456	op_xnm5_cbg	notype
+	457	op_xnm5_cbs	notype
+	458	op_xnm5_cdb	notype
+	459	op_xnm5_cdd	notype
+	460	op_xnm5_cdg	notype
+	461	op_xnm5_cds	notype
+	462	op_xnm5_cgb	notype
+	463	op_xnm5_cgd	notype
+	464	op_xnm5_cgg	notype
+	465	op_xnm5_cgs	notype
+	466	op_xnm5_csb	notype
+	467	op_xnm5_csd	notype
+	468	op_xnm5_csg	notype
+	469	op_xnm5_css	notype
+	470	op_xnm5_gds	notype
+	471	op_xnm5_gm	notype
+	472	op_xnm5_gmbs	notype
+	473	op_xnm5_id	notype
+	474	op_xnm5_l	notype
+	475	op_xnm5_m	notype
+	476	op_xnm5_qb	notype
+	477	op_xnm5_qd	notype
+	478	op_xnm5_qg	notype
+	479	op_xnm5_qs	notype
+	480	op_xnm5_vdsat	notype
+	481	op_xnm5_vth	notype
+	482	op_xnm5_w	notype
+	483	op_xnm6_capbd	notype
+	484	op_xnm6_capbs	notype
+	485	op_xnm6_cbb	notype
+	486	op_xnm6_cbd	notype
+	487	op_xnm6_cbg	notype
+	488	op_xnm6_cbs	notype
+	489	op_xnm6_cdb	notype
+	490	op_xnm6_cdd	notype
+	491	op_xnm6_cdg	notype
+	492	op_xnm6_cds	notype
+	493	op_xnm6_cgb	notype
+	494	op_xnm6_cgd	notype
+	495	op_xnm6_cgg	notype
+	496	op_xnm6_cgs	notype
+	497	op_xnm6_csb	notype
+	498	op_xnm6_csd	notype
+	499	op_xnm6_csg	notype
+	500	op_xnm6_css	notype
+	501	op_xnm6_gds	notype
+	502	op_xnm6_gm	notype
+	503	op_xnm6_gmbs	notype
+	504	op_xnm6_id	notype
+	505	op_xnm6_l	notype
+	506	op_xnm6_m	notype
+	507	op_xnm6_qb	notype
+	508	op_xnm6_qd	notype
+	509	op_xnm6_qg	notype
+	510	op_xnm6_qs	notype
+	511	op_xnm6_vdsat	notype
+	512	op_xnm6_vth	notype
+	513	op_xnm6_w	notype
+	514	op_xpm0_capbd	notype
+	515	op_xpm0_capbs	notype
+	516	op_xpm0_cbb	notype
+	517	op_xpm0_cbd	notype
+	518	op_xpm0_cbg	notype
+	519	op_xpm0_cbs	notype
+	520	op_xpm0_cdb	notype
+	521	op_xpm0_cdd	notype
+	522	op_xpm0_cdg	notype
+	523	op_xpm0_cds	notype
+	524	op_xpm0_cgb	notype
+	525	op_xpm0_cgd	notype
+	526	op_xpm0_cgg	notype
+	527	op_xpm0_cgs	notype
+	528	op_xpm0_csb	notype
+	529	op_xpm0_csd	notype
+	530	op_xpm0_csg	notype
+	531	op_xpm0_css	notype
+	532	op_xpm0_gds	notype
+	533	op_xpm0_gm	notype
+	534	op_xpm0_gmbs	notype
+	535	op_xpm0_id	notype
+	536	op_xpm0_l	notype
+	537	op_xpm0_m	notype
+	538	op_xpm0_qb	notype
+	539	op_xpm0_qd	notype
+	540	op_xpm0_qg	notype
+	541	op_xpm0_qs	notype
+	542	op_xpm0_vdsat	notype
+	543	op_xpm0_vth	notype
+	544	op_xpm0_w	notype
+	545	op_xpm1_capbd	notype
+	546	op_xpm1_capbs	notype
+	547	op_xpm1_cbb	notype
+	548	op_xpm1_cbd	notype
+	549	op_xpm1_cbg	notype
+	550	op_xpm1_cbs	notype
+	551	op_xpm1_cdb	notype
+	552	op_xpm1_cdd	notype
+	553	op_xpm1_cdg	notype
+	554	op_xpm1_cds	notype
+	555	op_xpm1_cgb	notype
+	556	op_xpm1_cgd	notype
+	557	op_xpm1_cgg	notype
+	558	op_xpm1_cgs	notype
+	559	op_xpm1_csb	notype
+	560	op_xpm1_csd	notype
+	561	op_xpm1_csg	notype
+	562	op_xpm1_css	notype
+	563	op_xpm1_gds	notype
+	564	op_xpm1_gm	notype
+	565	op_xpm1_gmbs	notype
+	566	op_xpm1_id	notype
+	567	op_xpm1_l	notype
+	568	op_xpm1_m	notype
+	569	op_xpm1_qb	notype
+	570	op_xpm1_qd	notype
+	571	op_xpm1_qg	notype
+	572	op_xpm1_qs	notype
+	573	op_xpm1_vdsat	notype
+	574	op_xpm1_vth	notype
+	575	op_xpm1_w	notype
+	576	op_xpm2_capbd	notype
+	577	op_xpm2_capbs	notype
+	578	op_xpm2_cbb	notype
+	579	op_xpm2_cbd	notype
+	580	op_xpm2_cbg	notype
+	581	op_xpm2_cbs	notype
+	582	op_xpm2_cdb	notype
+	583	op_xpm2_cdd	notype
+	584	op_xpm2_cdg	notype
+	585	op_xpm2_cds	notype
+	586	op_xpm2_cgb	notype
+	587	op_xpm2_cgd	notype
+	588	op_xpm2_cgg	notype
+	589	op_xpm2_cgs	notype
+	590	op_xpm2_csb	notype
+	591	op_xpm2_csd	notype
+	592	op_xpm2_csg	notype
+	593	op_xpm2_css	notype
+	594	op_xpm2_gds	notype
+	595	op_xpm2_gm	notype
+	596	op_xpm2_gmbs	notype
+	597	op_xpm2_id	notype
+	598	op_xpm2_l	notype
+	599	op_xpm2_m	notype
+	600	op_xpm2_qb	notype
+	601	op_xpm2_qd	notype
+	602	op_xpm2_qg	notype
+	603	op_xpm2_qs	notype
+	604	op_xpm2_vdsat	notype
+	605	op_xpm2_vth	notype
+	606	op_xpm2_w	notype
+	607	op_xpm3_capbd	notype
+	608	op_xpm3_capbs	notype
+	609	op_xpm3_cbb	notype
+	610	op_xpm3_cbd	notype
+	611	op_xpm3_cbg	notype
+	612	op_xpm3_cbs	notype
+	613	op_xpm3_cdb	notype
+	614	op_xpm3_cdd	notype
+	615	op_xpm3_cdg	notype
+	616	op_xpm3_cds	notype
+	617	op_xpm3_cgb	notype
+	618	op_xpm3_cgd	notype
+	619	op_xpm3_cgg	notype
+	620	op_xpm3_cgs	notype
+	621	op_xpm3_csb	notype
+	622	op_xpm3_csd	notype
+	623	op_xpm3_csg	notype
+	624	op_xpm3_css	notype
+	625	op_xpm3_gds	notype
+	626	op_xpm3_gm	notype
+	627	op_xpm3_gmbs	notype
+	628	op_xpm3_id	notype
+	629	op_xpm3_l	notype
+	630	op_xpm3_m	notype
+	631	op_xpm3_qb	notype
+	632	op_xpm3_qd	notype
+	633	op_xpm3_qg	notype
+	634	op_xpm3_qs	notype
+	635	op_xpm3_vdsat	notype
+	636	op_xpm3_vth	notype
+	637	op_xpm3_w	notype
+	638	op_xpm4_capbd	notype
+	639	op_xpm4_capbs	notype
+	640	op_xpm4_cbb	notype
+	641	op_xpm4_cbd	notype
+	642	op_xpm4_cbg	notype
+	643	op_xpm4_cbs	notype
+	644	op_xpm4_cdb	notype
+	645	op_xpm4_cdd	notype
+	646	op_xpm4_cdg	notype
+	647	op_xpm4_cds	notype
+	648	op_xpm4_cgb	notype
+	649	op_xpm4_cgd	notype
+	650	op_xpm4_cgg	notype
+	651	op_xpm4_cgs	notype
+	652	op_xpm4_csb	notype
+	653	op_xpm4_csd	notype
+	654	op_xpm4_csg	notype
+	655	op_xpm4_css	notype
+	656	op_xpm4_gds	notype
+	657	op_xpm4_gm	notype
+	658	op_xpm4_gmbs	notype
+	659	op_xpm4_id	notype
+	660	op_xpm4_l	notype
+	661	op_xpm4_m	notype
+	662	op_xpm4_qb	notype
+	663	op_xpm4_qd	notype
+	664	op_xpm4_qg	notype
+	665	op_xpm4_qs	notype
+	666	op_xpm4_vdsat	notype
+	667	op_xpm4_vth	notype
+	668	op_xpm4_w	notype
+	669	op_xpm5_capbd	notype
+	670	op_xpm5_capbs	notype
+	671	op_xpm5_cbb	notype
+	672	op_xpm5_cbd	notype
+	673	op_xpm5_cbg	notype
+	674	op_xpm5_cbs	notype
+	675	op_xpm5_cdb	notype
+	676	op_xpm5_cdd	notype
+	677	op_xpm5_cdg	notype
+	678	op_xpm5_cds	notype
+	679	op_xpm5_cgb	notype
+	680	op_xpm5_cgd	notype
+	681	op_xpm5_cgg	notype
+	682	op_xpm5_cgs	notype
+	683	op_xpm5_csb	notype
+	684	op_xpm5_csd	notype
+	685	op_xpm5_csg	notype
+	686	op_xpm5_css	notype
+	687	op_xpm5_gds	notype
+	688	op_xpm5_gm	notype
+	689	op_xpm5_gmbs	notype
+	690	op_xpm5_id	notype
+	691	op_xpm5_l	notype
+	692	op_xpm5_m	notype
+	693	op_xpm5_qb	notype
+	694	op_xpm5_qd	notype
+	695	op_xpm5_qg	notype
+	696	op_xpm5_qs	notype
+	697	op_xpm5_vdsat	notype
+	698	op_xpm5_vth	notype
+	699	op_xpm5_w	notype
+	700	op_xpm6_capbd	notype
+	701	op_xpm6_capbs	notype
+	702	op_xpm6_cbb	notype
+	703	op_xpm6_cbd	notype
+	704	op_xpm6_cbg	notype
+	705	op_xpm6_cbs	notype
+	706	op_xpm6_cdb	notype
+	707	op_xpm6_cdd	notype
+	708	op_xpm6_cdg	notype
+	709	op_xpm6_cds	notype
+	710	op_xpm6_cgb	notype
+	711	op_xpm6_cgd	notype
+	712	op_xpm6_cgg	notype
+	713	op_xpm6_cgs	notype
+	714	op_xpm6_csb	notype
+	715	op_xpm6_csd	notype
+	716	op_xpm6_csg	notype
+	717	op_xpm6_css	notype
+	718	op_xpm6_gds	notype
+	719	op_xpm6_gm	notype
+	720	op_xpm6_gmbs	notype
+	721	op_xpm6_id	notype
+	722	op_xpm6_l	notype
+	723	op_xpm6_m	notype
+	724	op_xpm6_qb	notype
+	725	op_xpm6_qd	notype
+	726	op_xpm6_qg	notype
+	727	op_xpm6_qs	notype
+	728	op_xpm6_vdsat	notype
+	729	op_xpm6_vth	notype
+	730	op_xpm6_w	notype
+	731	op_xpm7_capbd	notype
+	732	op_xpm7_capbs	notype
+	733	op_xpm7_cbb	notype
+	734	op_xpm7_cbd	notype
+	735	op_xpm7_cbg	notype
+	736	op_xpm7_cbs	notype
+	737	op_xpm7_cdb	notype
+	738	op_xpm7_cdd	notype
+	739	op_xpm7_cdg	notype
+	740	op_xpm7_cds	notype
+	741	op_xpm7_cgb	notype
+	742	op_xpm7_cgd	notype
+	743	op_xpm7_cgg	notype
+	744	op_xpm7_cgs	notype
+	745	op_xpm7_csb	notype
+	746	op_xpm7_csd	notype
+	747	op_xpm7_csg	notype
+	748	op_xpm7_css	notype
+	749	op_xpm7_gds	notype
+	750	op_xpm7_gm	notype
+	751	op_xpm7_gmbs	notype
+	752	op_xpm7_id	notype
+	753	op_xpm7_l	notype
+	754	op_xpm7_m	notype
+	755	op_xpm7_qb	notype
+	756	op_xpm7_qd	notype
+	757	op_xpm7_qg	notype
+	758	op_xpm7_qs	notype
+	759	op_xpm7_vdsat	notype
+	760	op_xpm7_vth	notype
+	761	op_xpm7_w	notype
+	762	op_xpm8_capbd	notype
+	763	op_xpm8_capbs	notype
+	764	op_xpm8_cbb	notype
+	765	op_xpm8_cbd	notype
+	766	op_xpm8_cbg	notype
+	767	op_xpm8_cbs	notype
+	768	op_xpm8_cdb	notype
+	769	op_xpm8_cdd	notype
+	770	op_xpm8_cdg	notype
+	771	op_xpm8_cds	notype
+	772	op_xpm8_cgb	notype
+	773	op_xpm8_cgd	notype
+	774	op_xpm8_cgg	notype
+	775	op_xpm8_cgs	notype
+	776	op_xpm8_csb	notype
+	777	op_xpm8_csd	notype
+	778	op_xpm8_csg	notype
+	779	op_xpm8_css	notype
+	780	op_xpm8_gds	notype
+	781	op_xpm8_gm	notype
+	782	op_xpm8_gmbs	notype
+	783	op_xpm8_id	notype
+	784	op_xpm8_l	notype
+	785	op_xpm8_m	notype
+	786	op_xpm8_qb	notype
+	787	op_xpm8_qd	notype
+	788	op_xpm8_qg	notype
+	789	op_xpm8_qs	notype
+	790	op_xpm8_vdsat	notype
+	791	op_xpm8_vth	notype
+	792	op_xpm8_w	notype
+	793	op_xpm9_capbd	notype
+	794	op_xpm9_capbs	notype
+	795	op_xpm9_cbb	notype
+	796	op_xpm9_cbd	notype
+	797	op_xpm9_cbg	notype
+	798	op_xpm9_cbs	notype
+	799	op_xpm9_cdb	notype
+	800	op_xpm9_cdd	notype
+	801	op_xpm9_cdg	notype
+	802	op_xpm9_cds	notype
+	803	op_xpm9_cgb	notype
+	804	op_xpm9_cgd	notype
+	805	op_xpm9_cgg	notype
+	806	op_xpm9_cgs	notype
+	807	op_xpm9_csb	notype
+	808	op_xpm9_csd	notype
+	809	op_xpm9_csg	notype
+	810	op_xpm9_css	notype
+	811	op_xpm9_gds	notype
+	812	op_xpm9_gm	notype
+	813	op_xpm9_gmbs	notype
+	814	op_xpm9_id	notype
+	815	op_xpm9_l	notype
+	816	op_xpm9_m	notype
+	817	op_xpm9_qb	notype
+	818	op_xpm9_qd	notype
+	819	op_xpm9_qg	notype
+	820	op_xpm9_qs	notype
+	821	op_xpm9_vdsat	notype
+	822	op_xpm9_vth	notype
+	823	op_xpm9_w	notype
+	824	v(out_cm)	voltage
+	825	v(out_dm)	voltage
+	826	v(out_n)	voltage
+	827	v(out_p)	voltage
+	828	v(out_sr)	voltage
+	829	output_headroom_high_v	notype
+	830	output_headroom_low_v	notype
+	831	output_minus_vinp_v	notype
+	832	power_uw	notype
+	833	i(vdd_dm)	current
+	834	v(vdd_n)	voltage
+	835	i(vdd_n)	current
+	836	v(vdd_p)	voltage
+	837	i(vdd_p)	current
+	838	v(vdd_q)	voltage
+	839	i(vdd_q)	current
+	840	v(vdd_sr)	voltage
+	841	i(vdd_sr)	current
+	842	i(vinn_cm)	current
+	843	i(vinn_dm)	current
+	844	i(vinn_n)	current
+	845	i(vinn_p)	current
+	846	i(vinn_sr)	current
+	847	i(vinp_cm)	current
+	848	i(vinp_dm)	current
+	849	i(vinp_n)	current
+	850	i(vinp_p)	current
+	851	i(vinp_sr)	current
+	852	v(vss_dm)	voltage
+	853	i(vss_dm)	current
+	854	v(vss_n)	voltage
+	855	i(vss_n)	current
+	856	v(vss_p)	voltage
+	857	i(vss_p)	current
+	858	v(vss_q)	voltage
+	859	i(vss_q)	current
+	860	v(vss_sr)	voltage
+	861	i(vss_sr)	current
+	862	v(xdut_cm.net1)	voltage
+	863	v(xdut_cm.net2)	voltage
+	864	v(xdut_cm.net9)	voltage
+	865	v(xdut_cm.net18)	voltage
+	866	v(xdut_cm.net24)	voltage
+	867	v(xdut_cm.net27)	voltage
+	868	v(xdut_cm.net34)	voltage
+	869	v(xdut_cm.net35)	voltage
+	870	v(xdut_cm.vb2)	voltage
+	871	v(xdut_cm.vb3)	voltage
+	872	v(xdut_dm.net1)	voltage
+	873	v(xdut_dm.net2)	voltage
+	874	v(xdut_dm.net9)	voltage
+	875	v(xdut_dm.net18)	voltage
+	876	v(xdut_dm.net24)	voltage
+	877	v(xdut_dm.net27)	voltage
+	878	v(xdut_dm.net34)	voltage
+	879	v(xdut_dm.net35)	voltage
+	880	v(xdut_dm.vb2)	voltage
+	881	v(xdut_dm.vb3)	voltage
+	882	v(xdut_n.net1)	voltage
+	883	v(xdut_n.net2)	voltage
+	884	v(xdut_n.net9)	voltage
+	885	v(xdut_n.net18)	voltage
+	886	v(xdut_n.net24)	voltage
+	887	v(xdut_n.net27)	voltage
+	888	v(xdut_n.net34)	voltage
+	889	v(xdut_n.net35)	voltage
+	890	v(xdut_n.vb2)	voltage
+	891	v(xdut_n.vb3)	voltage
+	892	v(xdut_p.net1)	voltage
+	893	v(xdut_p.net2)	voltage
+	894	v(xdut_p.net9)	voltage
+	895	v(xdut_p.net18)	voltage
+	896	v(xdut_p.net24)	voltage
+	897	v(xdut_p.net27)	voltage
+	898	v(xdut_p.net34)	voltage
+	899	v(xdut_p.net35)	voltage
+	900	v(xdut_p.vb2)	voltage
+	901	v(xdut_p.vb3)	voltage
+	902	v(xdut_sr.net1)	voltage
+	903	v(xdut_sr.net2)	voltage
+	904	v(xdut_sr.net9)	voltage
+	905	v(xdut_sr.net18)	voltage
+	906	v(xdut_sr.net24)	voltage
+	907	v(xdut_sr.net27)	voltage
+	908	v(xdut_sr.net34)	voltage
+	909	v(xdut_sr.net35)	voltage
+	910	v(xdut_sr.vb2)	voltage
+	911	v(xdut_sr.vb3)	voltage
+Values:
+ 0	1.800000000000000e+00
+	-1.283695372222837e-16
+	9.000000000000000e-01
+	9.000000000000000e-01
+	9.000000000000000e-01
+	9.000000000000000e-01
+	9.000000000000000e-01
+	9.000000000000000e-01
+	9.000000000000000e-01
+	9.000000000000000e-01
+	9.000000000000000e-01
+	9.000000000000000e-01
+	0.000000000000000e+00
+	1.455092291436802e-13
+	2.420394781384386e-13
+	1.944882092902041e-13
+	1.455092291436791e-13
+	2.420394781384366e-13
+	1.944882092902026e-13
+	6.086679736641950e-14
+	1.521669934029143e-13
+	3.043339868222136e-14
+	6.086679736641906e-14
+	1.521669934029131e-13
+	3.043339868222114e-14
+	8.235481235084136e-12
+	2.058373870867810e-11
+	4.117740617408338e-12
+	9.454065164260296e-12
+	2.154288406014169e-11
+	6.819147408310273e-12
+	1.046057417356199e-12
+	2.615143534966683e-12
+	5.230287086611131e-13
+	1.799999999967397e+00
+	1.799999999938581e+00
+	1.799999999963691e+00
+	1.799999999967396e+00
+	1.799999999938581e+00
+	1.799999999963690e+00
+	1.799999999989994e+00
+	1.799999999974989e+00
+	1.799999999994997e+00
+	1.799999999989994e+00
+	1.799999999974990e+00
+	1.799999999994998e+00
+	1.799999999956454e+00
+	1.799999999933072e+00
+	1.799999999977939e+00
+	1.799999999956454e+00
+	1.799999999933072e+00
+	1.799999999977939e+00
+	1.799999999999856e+00
+	1.799999999999640e+00
+	1.799999999999928e+00
+	1.799999999985626e+00
+	1.799999999966011e+00
+	1.799999999992814e+00
+	1.799999999982922e+00
+	1.799999999962427e+00
+	1.799999999991461e+00
+	1.799999999983434e+00
+	1.799999999963033e+00
+	1.799999999991718e+00
+	1.455092291436767e-13
+	2.420394781384327e-13
+	1.944882092901992e-13
+	1.455092291436775e-13
+	2.420394781384343e-13
+	1.944882092902002e-13
+	6.086679736641796e-14
+	1.521669934029104e-13
+	3.043339868222059e-14
+	6.086679736641824e-14
+	1.521669934029111e-13
+	3.043339868222073e-14
+	8.235481235084141e-12
+	2.058373870867811e-11
+	4.117740617408340e-12
+	9.454065164260294e-12
+	2.154288406014170e-11
+	6.819147408310270e-12
+	1.046057417356198e-12
+	2.615143534966682e-12
+	5.230287086611129e-13
+	1.799999999967396e+00
+	1.799999999938581e+00
+	1.799999999963690e+00
+	1.799999999967396e+00
+	1.799999999938581e+00
+	1.799999999963690e+00
+	1.799999999989994e+00
+	1.799999999974990e+00
+	1.799999999994998e+00
+	1.799999999989994e+00
+	1.799999999974990e+00
+	1.799999999994998e+00
+	1.799999999956454e+00
+	1.799999999933072e+00
+	1.799999999977939e+00
+	1.799999999956454e+00
+	1.799999999933072e+00
+	1.799999999977939e+00
+	1.799999999999856e+00
+	1.799999999999640e+00
+	1.799999999999928e+00
+	1.799999999985626e+00
+	1.799999999966011e+00
+	1.799999999992813e+00
+	1.799999999982922e+00
+	1.799999999962427e+00
+	1.799999999991461e+00
+	1.799999999983434e+00
+	1.799999999963033e+00
+	1.799999999991718e+00
+	1.455092291436783e-13
+	2.420394781384352e-13
+	1.944882092902017e-13
+	1.455092291436793e-13
+	2.420394781384373e-13
+	1.944882092902027e-13
+	6.086679736641880e-14
+	1.521669934029125e-13
+	3.043339868222101e-14
+	6.086679736641904e-14
+	1.521669934029131e-13
+	3.043339868222113e-14
+	8.235481235084136e-12
+	2.058373870867810e-11
+	4.117740617408338e-12
+	9.454065164260293e-12
+	2.154288406014169e-11
+	6.819147408310271e-12
+	1.046057417356199e-12
+	2.615143534966683e-12
+	5.230287086611131e-13
+	1.799999999967396e+00
+	1.799999999938581e+00
+	1.799999999963690e+00
+	1.799999999967396e+00
+	1.799999999938581e+00
+	1.799999999963690e+00
+	1.799999999989994e+00
+	1.799999999974989e+00
+	1.799999999994997e+00
+	1.799999999989994e+00
+	1.799999999974990e+00
+	1.799999999994998e+00
+	1.799999999956454e+00
+	1.799999999933072e+00
+	1.799999999977939e+00
+	1.799999999956454e+00
+	1.799999999933072e+00
+	1.799999999977939e+00
+	1.799999999999856e+00
+	1.799999999999640e+00
+	1.799999999999928e+00
+	1.799999999985626e+00
+	1.799999999966011e+00
+	1.799999999992814e+00
+	1.799999999982922e+00
+	1.799999999962427e+00
+	1.799999999991461e+00
+	1.799999999983434e+00
+	1.799999999963033e+00
+	1.799999999991718e+00
+	1.455092291436793e-13
+	2.420394781384374e-13
+	1.944882092902024e-13
+	1.455092291436799e-13
+	2.420394781384381e-13
+	1.944882092902036e-13
+	6.086679736641883e-14
+	1.521669934029126e-13
+	3.043339868222102e-14
+	6.086679736641930e-14
+	1.521669934029138e-13
+	3.043339868222126e-14
+	8.235481235084136e-12
+	2.058373870867810e-11
+	4.117740617408338e-12
+	9.454065164260288e-12
+	2.154288406014168e-11
+	6.819147408310263e-12
+	1.046057417356197e-12
+	2.615143534966678e-12
+	5.230287086611121e-13
+	1.799999999967397e+00
+	1.799999999938581e+00
+	1.799999999963691e+00
+	1.799999999967396e+00
+	1.799999999938581e+00
+	1.799999999963690e+00
+	1.799999999989994e+00
+	1.799999999974989e+00
+	1.799999999994997e+00
+	1.799999999989994e+00
+	1.799999999974990e+00
+	1.799999999994998e+00
+	1.799999999956454e+00
+	1.799999999933072e+00
+	1.799999999977939e+00
+	1.799999999956454e+00
+	1.799999999933072e+00
+	1.799999999977939e+00
+	1.799999999999856e+00
+	1.799999999999640e+00
+	1.799999999999928e+00
+	1.799999999985626e+00
+	1.799999999966011e+00
+	1.799999999992814e+00
+	1.799999999982922e+00
+	1.799999999962427e+00
+	1.799999999991461e+00
+	1.799999999983434e+00
+	1.799999999963033e+00
+	1.799999999991718e+00
+	1.455092291436763e-13
+	2.420394781384326e-13
+	1.944882092901981e-13
+	1.455092291436767e-13
+	2.420394781384336e-13
+	1.944882092901986e-13
+	6.086679736641751e-14
+	1.521669934029093e-13
+	3.043339868222036e-14
+	6.086679736641762e-14
+	1.521669934029096e-13
+	3.043339868222042e-14
+	8.235481235084136e-12
+	2.058373870867810e-11
+	4.117740617408338e-12
+	9.454065164260286e-12
+	2.154288406014168e-11
+	6.819147408310265e-12
+	1.046057417356197e-12
+	2.615143534966680e-12
+	5.230287086611123e-13
+	1.799999999967396e+00
+	1.799999999938581e+00
+	1.799999999963690e+00
+	1.799999999967396e+00
+	1.799999999938581e+00
+	1.799999999963690e+00
+	1.799999999989994e+00
+	1.799999999974990e+00
+	1.799999999994998e+00
+	1.799999999989994e+00
+	1.799999999974990e+00
+	1.799999999994998e+00
+	1.799999999956454e+00
+	1.799999999933072e+00
+	1.799999999977939e+00
+	1.799999999956454e+00
+	1.799999999933072e+00
+	1.799999999977939e+00
+	1.799999999999856e+00
+	1.799999999999640e+00
+	1.799999999999928e+00
+	1.799999999985626e+00
+	1.799999999966011e+00
+	1.799999999992813e+00
+	1.799999999982922e+00
+	1.799999999962427e+00
+	1.799999999991461e+00
+	1.799999999983434e+00
+	1.799999999963033e+00
+	1.799999999991718e+00
+	1.000000000000000e+02
+	1.000000000000000e-01
+	5.000000000000000e+10
+	5.000000000000000e-01
+	5.000000000000000e-01
+	5.000000000000000e-01
+	5.000000000000000e-01
+	5.000000000000000e-01
+	5.000000000000000e-01
+	5.000000000000000e-01
+	5.000000000000000e+00
+	1.000000000000000e+00
+	1.000000000000000e+00
+	5.000000000000000e+00
+	5.000000000000000e+00
+	5.000000000000000e+00
+	1.000000000000000e+01
+	5.000000000000000e+00
+	1.000000000000000e+01
+	2.000000000000000e+01
+	5.000000000000000e-06
+	9.000000000000000e-01
+	0.000000000000000e+00
+	1.000000000000000e-12
+	1.000000000000000e+00
+	1.000000000000000e-02
+	-1.000000000000000e-02
+	1.800000000000000e+00
+	0.000000000000000e+00
+	1.185901590712434e-15
+	1.187392614046038e-15
+	4.358327186761831e-15
+	-5.696446404629467e-15
+	-6.916293854165046e-16
+	2.029748603284140e-15
+	-1.716181045673283e-15
+	9.025653039220565e-15
+	-6.940554104028188e-15
+	-3.689178895190939e-16
+	-9.238149026632893e-16
+	-7.820183920033918e-15
+	1.457768222490945e-14
+	-5.833683402212247e-15
+	-1.718331238425259e-15
+	4.490977285442820e-15
+	-6.945498735464762e-15
+	4.172852688447201e-15
+	1.129874542600225e-04
+	2.328600549650789e-06
+	5.133548640640972e-07
+	1.722371281333878e-07
+	5.000000000000000e-07
+	1.000000000000000e+00
+	-6.057228969827473e-15
+	-1.635335147905743e-15
+	9.334753560406603e-15
+	-1.642189442673387e-15
+	7.609150654477573e-02
+	6.310664437288264e-01
+	5.000000000000000e-06
+	1.185901590712434e-15
+	1.187392614046038e-15
+	4.358327186761831e-15
+	-5.696446404629467e-15
+	-6.916293854165046e-16
+	2.029748603284140e-15
+	-1.716181045673283e-15
+	9.025653039220565e-15
+	-6.940554104028188e-15
+	-3.689178895190939e-16
+	-9.238149026632893e-16
+	-7.820183920033918e-15
+	1.457768222490945e-14
+	-5.833683402212247e-15
+	-1.718331238425259e-15
+	4.490977285442820e-15
+	-6.945498735464762e-15
+	4.172852688447201e-15
+	1.129874542600225e-04
+	2.328600549650789e-06
+	5.133548640640972e-07
+	1.722371281333878e-07
+	5.000000000000000e-07
+	1.000000000000000e+00
+	-6.057228969827473e-15
+	-1.635335147905743e-15
+	9.334753560406603e-15
+	-1.642189442673387e-15
+	7.609150654477573e-02
+	6.310664437288264e-01
+	5.000000000000000e-06
+	2.374785228091993e-15
+	2.014984696626181e-15
+	8.717761507766825e-15
+	-1.117145676399763e-14
+	-1.488987581229311e-15
+	3.942682837460112e-15
+	-3.379365576941848e-15
+	1.771559900305950e-14
+	-1.361815345872941e-14
+	-7.180799673882370e-16
+	-1.947752563379950e-15
+	-1.531386838251444e-14
+	2.875222221128014e-14
+	-1.149060126538576e-14
+	-3.390643367445027e-15
+	8.769726143452569e-15
+	-1.364508117132142e-14
+	8.265998395313881e-15
+	1.915934180574409e-04
+	1.069890074377553e-05
+	2.366323131637634e-06
+	7.486612948711287e-07
+	5.000000000000000e-07
+	2.000000000000000e+00
+	-1.209254278256028e-14
+	-3.102448963082877e-15
+	1.833160351953783e-14
+	-3.136611773894668e-15
+	7.203718118542987e-02
+	6.301683327831933e-01
+	5.000000000000000e-06
+	2.374785228091993e-15
+	2.014984696626181e-15
+	8.717761507766825e-15
+	-1.117145676399763e-14
+	-1.488987581229311e-15
+	3.942682837460112e-15
+	-3.379365576941848e-15
+	1.771559900305950e-14
+	-1.361815345872941e-14
+	-7.180799673882370e-16
+	-1.947752563379950e-15
+	-1.531386838251444e-14
+	2.875222221128014e-14
+	-1.149060126538576e-14
+	-3.390643367445027e-15
+	8.769726143452569e-15
+	-1.364508117132142e-14
+	8.265998395313881e-15
+	1.915934180574409e-04
+	1.069890074377553e-05
+	2.366323131637634e-06
+	7.486612948711287e-07
+	5.000000000000000e-07
+	2.000000000000000e+00
+	-1.209254278256028e-14
+	-3.102448963082877e-15
+	1.833160351953783e-14
+	-3.136611773894668e-15
+	7.203718118542987e-02
+	6.301683327831933e-01
+	5.000000000000000e-06
+	7.870520442544100e-16
+	1.007492348317162e-15
+	3.796768405450895e-15
+	-1.341658620841358e-18
+	-2.640823639194087e-15
+	-1.154603107635966e-15
+	-9.123977152275785e-16
+	-1.393543895348735e-18
+	-3.666491148606510e-15
+	4.580282407729437e-15
+	-1.519870290948074e-15
+	1.304982069204788e-17
+	1.179320998176796e-14
+	-1.028638951151194e-14
+	-1.364500399275242e-15
+	-1.031461817585779e-17
+	-5.485895193967366e-15
+	6.860710211418467e-15
+	8.037034254723091e-07
+	9.576018306721721e-05
+	2.064371663292293e-05
+	5.042353923378281e-06
+	5.000000000000000e-07
+	1.000000000000000e+00
+	-6.467594361734589e-15
+	-8.526298416439424e-16
+	8.596721680959535e-15
+	-1.276497477581004e-15
+	7.262637018022415e-02
+	6.287535627162898e-01
+	5.000000000000000e-06
+	3.908014610882053e-15
+	5.607613762803733e-15
+	1.841839483050476e-14
+	-4.478956857913552e-18
+	-1.325847808867951e-14
+	-5.155437784967338e-15
+	-3.725401974434048e-15
+	-6.874589401403836e-18
+	-1.537828276114751e-14
+	1.911055932498296e-14
+	-9.121953488025014e-15
+	5.501333013438759e-17
+	5.164345984942183e-14
+	-4.257651969153120e-14
+	-5.571039368045700e-15
+	-4.365978387507020e-17
+	-2.300669899959481e-14
+	2.862139815151558e-14
+	1.002434146737297e-06
+	1.124418438752017e-04
+	2.395319059158706e-05
+	5.035781558293509e-06
+	5.000000000000000e-07
+	5.000000000000000e+00
+	-3.293210418848285e-14
+	-2.923883330015835e-15
+	4.023243545722848e-14
+	-4.376447938729796e-15
+	5.033867465852469e-02
+	6.461000593463747e-01
+	5.000000000000000e-06
+	1.121522752557087e-15
+	1.007492348313581e-15
+	4.093888010989877e-15
+	-2.720789535029546e-15
+	-1.416887839821824e-15
+	4.378936386149305e-17
+	-1.404101530311414e-15
+	4.572471294578916e-15
+	-5.825814755626175e-15
+	2.657444991358673e-15
+	-1.117508508520120e-15
+	-3.721585594986661e-15
+	1.365209392451400e-14
+	-8.812999821007219e-15
+	-1.572277972158342e-15
+	1.869903835437291e-15
+	-6.409391329066001e-15
+	6.111765465787053e-15
+	2.347264614569686e-05
+	8.533952863423367e-05
+	1.846194515269470e-05
+	5.035778529744509e-06
+	5.000000000000000e-07
+	1.000000000000000e+00
+	-6.358780497143564e-15
+	-1.156053402806645e-15
+	8.954551892614380e-15
+	-1.439717992664170e-15
+	7.822435876916858e-02
+	6.300126534824433e-01
+	5.000000000000000e-06
+	1.126575428234021e-15
+	1.591676610744052e-15
+	5.575445538904827e-15
+	1.803198867392238e-18
+	-4.829601069165335e-15
+	-7.476476686068841e-16
+	-6.834496410451998e-16
+	-1.082289732791841e-17
+	-3.455936654451560e-15
+	4.150209192824678e-15
+	-3.867581936047542e-15
+	2.624895089886642e-17
+	1.346582893731763e-14
+	-9.624495952168952e-15
+	-1.024413961812085e-15
+	-1.722925243834024e-17
+	-5.180291213700732e-15
+	6.221934427951158e-15
+	2.058684406834951e-08
+	3.136937022809545e-06
+	6.123591100732738e-07
+	1.722353281568617e-07
+	5.000000000000000e-07
+	1.000000000000000e+00
+	-1.870866712713756e-14
+	-5.159544743002067e-16
+	1.999804560425346e-14
+	-7.734240028157004e-16
+	4.991577594055137e-02
+	1.163920203711808e+00
+	9.999999999999999e-06
+	1.126575428234021e-15
+	1.591676610744051e-15
+	5.575445538904827e-15
+	1.803198867392231e-18
+	-4.829601069165338e-15
+	-7.476476686068818e-16
+	-6.834496410452002e-16
+	-1.082289732791838e-17
+	-3.455936654451547e-15
+	4.150209192824665e-15
+	-3.867581936047545e-15
+	2.624895089886636e-17
+	1.346582893731761e-14
+	-9.624495952168931e-15
+	-1.024413961812082e-15
+	-1.722925243834020e-17
+	-5.180291213700725e-15
+	6.221934427951148e-15
+	2.058684406834938e-08
+	3.136937022809522e-06
+	6.123591100732695e-07
+	1.722353281568606e-07
+	5.000000000000000e-07
+	1.000000000000000e+00
+	-1.870866712713756e-14
+	-5.159544743002065e-16
+	1.999804560425346e-14
+	-7.734240028156974e-16
+	4.991577594055137e-02
+	1.163920203711808e+00
+	9.999999999999999e-06
+	3.183353221473104e-15
+	2.807539036013495e-15
+	1.592888735687048e-14
+	6.054422629812393e-18
+	-1.320461022804421e-14
+	-2.730331551456084e-15
+	-1.631869495410879e-15
+	-1.603758733446056e-17
+	-5.547344058967590e-15
+	7.195251141712930e-15
+	-1.185218362011202e-14
+	3.727266419503253e-17
+	2.706381450946491e-14
+	-1.524890355354793e-14
+	-2.444834241347585e-15
+	-2.728949949038436e-17
+	-8.311860222453109e-15
+	1.078398396329108e-14
+	2.218523746796548e-08
+	3.246605689988977e-06
+	8.976889520809455e-07
+	1.722337274613004e-07
+	5.000000000000000e-07
+	1.000000000000000e+00
+	-2.464161072912486e-14
+	-8.403776591692195e-16
+	2.674124673367652e-14
+	-1.259258345382446e-15
+	4.564016505355240e-02
+	9.953668066024469e-01
+	2.000000000000000e-05
+	3.183353221473105e-15
+	2.807539036013495e-15
+	1.592888735687048e-14
+	6.054422629812393e-18
+	-1.320461022804421e-14
+	-2.730331551456084e-15
+	-1.631869495410879e-15
+	-1.603758733446056e-17
+	-5.547344058967590e-15
+	7.195251141712930e-15
+	-1.185218362011202e-14
+	3.727266419503252e-17
+	2.706381450946491e-14
+	-1.524890355354793e-14
+	-2.444834241347585e-15
+	-2.728949949038436e-17
+	-8.311860222453109e-15
+	1.078398396329108e-14
+	2.218523746796548e-08
+	3.246605689988977e-06
+	8.976889520809455e-07
+	1.722337274613004e-07
+	5.000000000000000e-07
+	1.000000000000000e+00
+	-2.464161072912486e-14
+	-8.403776591692195e-16
+	2.674124673367652e-14
+	-1.259258345382446e-15
+	4.564016505355240e-02
+	9.953668066024469e-01
+	2.000000000000000e-05
+	1.126087534608538e-15
+	2.377380335781771e-15
+	7.799406332992536e-15
+	5.164053829997977e-18
+	-5.868541338526821e-15
+	-1.936029048295714e-15
+	-1.296356043915182e-15
+	-1.526153757214248e-17
+	-4.601966342846257e-15
+	5.913583924333582e-15
+	-4.559002892882306e-15
+	3.327041907792820e-17
+	1.737192017300619e-14
+	-1.284618769920181e-14
+	-1.944047396195047e-15
+	-2.317293533578370e-17
+	-6.901412491633109e-15
+	8.868632823163939e-15
+	5.467984656282795e-08
+	9.980588126257619e-06
+	2.702099277006649e-06
+	5.764215482011475e-07
+	5.000000000000000e-07
+	1.000000000000000e+00
+	-1.303057414002326e-14
+	-7.997385116397150e-16
+	1.502966668064695e-14
+	-1.199354028983971e-15
+	5.405689061184223e-02
+	9.916591537856722e-01
+	9.999999999999999e-06
+	1.126087534608538e-15
+	2.377380335781771e-15
+	7.799406332992536e-15
+	5.164053829997977e-18
+	-5.868541338526821e-15
+	-1.936029048295714e-15
+	-1.296356043915182e-15
+	-1.526153757214248e-17
+	-4.601966342846257e-15
+	5.913583924333582e-15
+	-4.559002892882306e-15
+	3.327041907792820e-17
+	1.737192017300619e-14
+	-1.284618769920181e-14
+	-1.944047396195047e-15
+	-2.317293533578370e-17
+	-6.901412491633109e-15
+	8.868632823163939e-15
+	5.467984656282795e-08
+	9.980588126257619e-06
+	2.702099277006649e-06
+	5.764215482011475e-07
+	5.000000000000000e-07
+	1.000000000000000e+00
+	-1.303057414002326e-14
+	-7.997385116397150e-16
+	1.502966668064695e-14
+	-1.199354028983971e-15
+	5.405689061184223e-02
+	9.916591537856722e-01
+	9.999999999999999e-06
+	2.377380335748614e-15
+	1.403769518001066e-15
+	8.853330311324295e-15
+	-9.763529772550390e-15
+	-1.533227277037653e-15
+	2.443426738263747e-15
+	-3.823357575258584e-15
+	1.715582359335753e-14
+	-1.417828387362812e-14
+	8.458178555291714e-16
+	-1.183481286647223e-15
+	-1.578917492849695e-14
+	2.994633476828669e-14
+	-1.297367855314252e-14
+	-3.846491449418488e-15
+	8.396881107689803e-15
+	-1.423482361762092e-14
+	9.684433959349604e-15
+	1.199426909707076e-04
+	1.003530900478390e-05
+	2.657140058840035e-06
+	1.152843050331829e-06
+	5.000000000000000e-07
+	2.000000000000000e+00
+	-1.330570243330918e-14
+	-3.402954107839385e-15
+	2.019334036066660e-14
+	-3.484683819518040e-15
+	1.228128501269668e-01
+	9.854232830602390e-01
+	5.000000000000000e-06
+	7.151379903638620e-16
+	7.018847590046320e-16
+	3.878484975616144e-15
+	3.497189423254393e-18
+	-2.543968996889075e-15
+	-1.338013168150323e-15
+	-1.039633469513368e-15
+	-1.302554149547731e-17
+	-3.842122457087436e-15
+	4.894781468096281e-15
+	-1.280913865419902e-15
+	3.106464367516018e-17
+	1.214442480135963e-14
+	-1.089457557961489e-14
+	-1.557937640682875e-15
+	-2.153629160293726e-17
+	-5.758333347383116e-15
+	7.337807279668928e-15
+	4.805102673717225e-07
+	6.543608888034213e-05
+	1.687565271310306e-05
+	4.999998888999659e-06
+	5.000000000000000e-07
+	1.000000000000000e+00
+	-7.054940760962029e-15
+	-9.668218027691803e-16
+	9.470999737879936e-15
+	-1.449237174148726e-15
+	1.253958478724573e-01
+	9.814084541297141e-01
+	5.000000000000000e-06
+	6.922073497195876e-16
+	7.018847590054111e-16
+	3.878871627985221e-15
+	3.676929004346957e-18
+	-2.543947126414450e-15
+	-1.338601430575118e-15
+	-1.039958989603117e-15
+	-1.340127422407000e-17
+	-3.843654345536706e-15
+	4.897014609363892e-15
+	-1.280233173246105e-15
+	3.136953208377510e-17
+	1.214906020976296e-14
+	-1.090019656860063e-14
+	-1.558679465135999e-15
+	-2.164518686405207e-17
+	-5.761458737811801e-15
+	7.341783389811853e-15
+	4.687530601049347e-07
+	6.590764196859526e-05
+	1.699467087590734e-05
+	5.042353318308527e-06
+	5.000000000000000e-07
+	1.000000000000000e+00
+	-7.054620096894193e-15
+	-9.680022792629623e-16
+	9.473787162413584e-15
+	-1.451164786256428e-15
+	1.256164695623050e-01
+	9.810680568441277e-01
+	5.000000000000000e-06
+	6.957006315019486e-16
+	7.018847590052635e-16
+	3.878809096765184e-15
+	3.652595404144769e-18
+	-2.543956195594088e-15
+	-1.338505496575241e-15
+	-1.039904452164858e-15
+	-1.335033969579444e-17
+	-3.843402600020975e-15
+	4.896657391881628e-15
+	-1.280342328324835e-15
+	3.132797305705586e-17
+	1.214832478611707e-14
+	-1.089931043084929e-14
+	-1.558562316275491e-15
+	-2.163022876540618e-17
+	-5.760965990502005e-15
+	7.341158535542903e-15
+	4.704664888300189e-07
+	6.583478710559000e-05
+	1.697629145089540e-05
+	5.035781587838360e-06
+	5.000000000000000e-07
+	1.000000000000000e+00
+	-7.054671383531055e-15
+	-9.678150933882390e-16
+	9.473348461361042e-15
+	-1.450861984441748e-15
+	1.255818671630237e-01
+	9.811214193659307e-01
+	5.000000000000000e-06
+	5.304439875720126e-03
+	5.304439875719998e-03
+	5.304439875720050e-03
+	5.304439875720105e-03
+	5.304439875719999e-03
+	1.794695560124280e+00
+	5.304439875720126e-03
+	-8.946955601242799e-01
+	2.983582808994590e+01
+	-1.657546004989156e-05
+	1.800000000000000e+00
+	-1.657546004996090e-05
+	1.800000000000000e+00
+	-1.657546004997083e-05
+	1.800000000000000e+00
+	-1.657546004996994e-05
+	1.800000000000000e+00
+	-1.657546005021801e-05
+	0.000000000000000e+00
+	0.000000000000000e+00
+	0.000000000000000e+00
+	0.000000000000000e+00
+	0.000000000000000e+00
+	0.000000000000000e+00
+	0.000000000000000e+00
+	0.000000000000000e+00
+	0.000000000000000e+00
+	0.000000000000000e+00
+	0.000000000000000e+00
+	1.657546005002507e-05
+	0.000000000000000e+00
+	1.657546005002506e-05
+	0.000000000000000e+00
+	1.657546005002502e-05
+	0.000000000000000e+00
+	1.657546005002505e-05
+	0.000000000000000e+00
+	1.657546005002499e-05
+	7.379079262057655e-01
+	7.475382172508560e-02
+	1.790782829941839e+00
+	1.009692752985027e+00
+	3.796119977428805e-03
+	3.796119977428833e-03
+	5.304439875720081e-03
+	1.009692752985028e+00
+	6.626340592003807e-01
+	6.486399237365607e-01
+	7.379079262057654e-01
+	7.475382172508557e-02
+	1.790782829941839e+00
+	1.009692752985027e+00
+	3.796119977428753e-03
+	3.796119977428736e-03
+	5.304439875720033e-03
+	1.009692752985027e+00
+	6.626340592003808e-01
+	6.486399237365611e-01
+	7.379079262057655e-01
+	7.475382172508560e-02
+	1.790782829941839e+00
+	1.009692752985028e+00
+	3.796119977428804e-03
+	3.796119977428788e-03
+	5.304439875720098e-03
+	1.009692752985027e+00
+	6.626340592003807e-01
+	6.486399237365608e-01
+	7.379079262057655e-01
+	7.475382172508543e-02
+	1.790782829941839e+00
+	1.009692752985027e+00
+	3.796119977428821e-03
+	3.796119977428792e-03
+	5.304439875720116e-03
+	1.009692752985028e+00
+	6.626340592003804e-01
+	6.486399237365607e-01
+	7.379079262057654e-01
+	7.475382172508549e-02
+	1.790782829941837e+00
+	1.009692752985027e+00
+	3.796119977428715e-03
+	3.796119977428708e-03
+	5.304439875720022e-03
+	1.009692752985027e+00
+	6.626340592003804e-01
+	6.486399237365607e-01
+

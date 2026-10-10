@@ -1,0 +1,2 @@
+DC_Gain_dB,UGF_Hz,Phase_Margin_deg,CMRR_dB,PSRR_Plus_dB,PSRR_Minus_dB,Slew_Rise_V_us,Slew_Fall_V_us,Power_Quiescent_uW
+-31.2964,nan,nan,-3.99382,-7.33773,-31.1187,0.0134735,0.0135489,29.8358

@@ -8,6 +8,6 @@
     "CL": "1p",
     "AC_POINTS_PER_DEC": 100,
     "AC_START": 1,
-    "AC_STOP": "1G",
+    "AC_STOP": "50G",
     "OUTPUT_PATH": "stability_response.txt"
 }

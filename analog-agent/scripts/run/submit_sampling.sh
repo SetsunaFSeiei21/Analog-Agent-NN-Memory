@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # 只修改这里：正式任务的电路、采样量和集群配置。
-SOURCE_DIR="Sample_Optimizer_Circuit/two_stage_folded_opamp"
-CIRCUIT_NAME="two_stage_folded_opamp"
+SOURCE_DIR="Sample_Optimizer_Circuit/two_stage_opamp_otaf"
+CIRCUIT_NAME="two_stage_opamp_otaf"
 CIRCUIT_TYPE="single_ended_opamp"
 N_POINTS=60000
 N_WORKERS=8

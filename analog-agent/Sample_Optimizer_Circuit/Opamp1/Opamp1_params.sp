@@ -37,5 +37,7 @@
 .param DESVAR_L10=0.5
 
 .param DESVAR_M1=1
+.param DESVAR_M2=5
+.param DESVAR_M3=5
 
 .param IBIAS_A=10e-6

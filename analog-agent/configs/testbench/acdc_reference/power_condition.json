@@ -4,6 +4,6 @@
     "TEMP": 27,
     "VDD": 1.8,
     "VSS": 0.0,
-    "VCM": 0.9,
+    "VCM": 0.72,
     "OUTPUT_PATH": "power_result.txt"
 }

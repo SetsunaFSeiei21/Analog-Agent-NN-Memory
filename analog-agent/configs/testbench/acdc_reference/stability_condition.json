@@ -4,10 +4,10 @@
     "TEMP": 27,
     "VDD": 1.8,
     "VSS": 0.0,
-    "VCM": 0.9,
+    "VCM": 0.72,
     "CL": "1p",
     "AC_POINTS_PER_DEC": 100,
     "AC_START": 0.1,
-    "AC_STOP": "10G",
+    "AC_STOP": "20G",
     "OUTPUT_PATH": "stability_response.txt"
 }
