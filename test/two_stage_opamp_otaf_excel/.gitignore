@@ -1,0 +1,7 @@
+two_stage_opamp_otaf_metrics.txt
+two_stage_opamp_otaf_dc_operating_point.raw
+two_stage_opamp_otaf_dc_operating_point.csv
+two_stage_opamp_otaf_results.xlsx
+two_stage_opamp_otaf_results.json
+*.log
+__pycache__/

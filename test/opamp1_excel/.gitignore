@@ -1,0 +1,7 @@
+opamp1_metrics.txt
+opamp1_dc_operating_point.raw
+opamp1_dc_operating_point.csv
+opamp1_results.xlsx
+opamp1_results.json
+*.log
+__pycache__/

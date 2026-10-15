@@ -1,0 +1,1287 @@
+Opamp1 - single-file nine-metric ngspice testbench
+* ============================================================
+* Run: ngspice -b Opamp1_all_metrics.cir
+* Output: opamp1_metrics.txt, in the current working directory.
+* The output has one CSV header and one row, although its suffix is .txt.
+* DUT and its 22 design parameters are embedded below; no params.sp needed.
+* DC operating point: XDUT_CM, one quiet voltage-follower instance.
+* Also keep opamp1_export_excel.py in the current working directory.
+* Excel export needs Python 3 and openpyxl: python3 -m pip install openpyxl
+* Additional outputs: opamp1_dc_operating_point.raw/.csv and opamp1_results.xlsx.
+* The PDK remains external. Raw DC data is saved before AC/transient analysis.
+* Edit the PDK path, TEST CONDITIONS and DESIGN PARAMETERS before use.
+* Example dimensions below are not a verified golden point.
+*
+* Metric definitions follow the repository's single-ended-opamp benches:
+* gain: inverting-input AC injection, corrected for input sign, at 1 Hz;
+* UGF/PM: first falling unity-loop-gain crossing in the SAME AC sweep;
+* CMRR: reconstructed |ADM/ACM|, at 1 Hz;
+* PSRR: unity-follower rail rejection, at 1 Hz (repository convention);
+* SR: average 10%-90% settled OUTPUT transition slope, positive V/us;
+* power: DC rail power of ONE quiet follower instance, in uW.
+* Missing crossings/transitions are written as nan, never as zero.
+* Negative dB values and negative phase margins are retained.
+* ============================================================
+
+.param mc_mm_switch=0 mc_pr_switch=0
+.lib "/share/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
+.option scale=1u
+.options numdgt=15
+.temp 27
+
+* --------------------- TEST CONDITIONS -----------------------
+* W/L use um, current uses A, capacitor value uses F.
+.param SUPPLY_VDD=1.8 SUPPLY_VSS=0.0 INPUT_VCM=0.72 LOAD_C=1p
+.param AC_DENSITY=100 AC_START_HZ=0.1 AC_STOP_HZ=50e9 REF_HZ=1
+.param SR_LOW=0.7 SR_HIGH=1.1 SR_DELAY=1u
+.param SR_INPUT_TR=1n SR_INPUT_TF=1n SR_WIDTH=4u SR_PERIOD=10u
+.param TRAN_STEP=1n TRAN_STOP=12u TRAN_MAX_STEP=1n
+.param LOW_AVG_START=0.2u LOW_AVG_STOP=0.8u
+.param HIGH_AVG_START=3u HIGH_AVG_STOP=4u
+.param RISE_WINDOW_START=0.9u RISE_WINDOW_END=4.9u
+.param FALL_WINDOW_START=4.9u FALL_WINDOW_END=10.9u
+.param MIN_OUTPUT_SWING=1e-6
+
+* Copy .param values into control-language constants.
+.csparam cfg_ac_density={AC_DENSITY}
+.csparam cfg_ac_start={AC_START_HZ}
+.csparam cfg_ac_stop={AC_STOP_HZ}
+.csparam cfg_ref_hz={REF_HZ}
+.csparam cfg_tran_step={TRAN_STEP}
+.csparam cfg_tran_stop={TRAN_STOP}
+.csparam cfg_tran_max_step={TRAN_MAX_STEP}
+.csparam cfg_low_start={LOW_AVG_START}
+.csparam cfg_low_stop={LOW_AVG_STOP}
+.csparam cfg_high_start={HIGH_AVG_START}
+.csparam cfg_high_stop={HIGH_AVG_STOP}
+.csparam cfg_rise_start={RISE_WINDOW_START}
+.csparam cfg_rise_end={RISE_WINDOW_END}
+.csparam cfg_fall_start={FALL_WINDOW_START}
+.csparam cfg_fall_end={FALL_WINDOW_END}
+.csparam cfg_min_swing={MIN_OUTPUT_SWING}
+
+* -------------------- DESIGN PARAMETERS ----------------------
+* Source: analog-agent/Sample_Optimizer_Circuit/Opamp1/
+* Source revision: 6a1363ef6be90905c52dde54e39f59df258c1ee5
+* Standalone snapshot: edit parameters HERE to change this test.
+* Source defaults retained; not a simulation-verified operating point.
+* ============================================================
+* Opamp1_params.sp
+*
+* Design parameters for Opamp1
+*
+* Units:
+*   W, L    -> um
+*   IBIAS_A -> A
+*   M       -> dimensionless positive integer
+* ============================================================
+
+.param DESVAR_W1=5.0
+.param DESVAR_L1=0.5
+
+.param DESVAR_W2=5.0
+.param DESVAR_L2=0.5
+
+.param DESVAR_W4=5.0
+.param DESVAR_L4=0.5
+
+.param DESVAR_W5=5.0
+.param DESVAR_L5=0.5
+
+.param DESVAR_W6=5.0
+.param DESVAR_L6=0.5
+
+.param DESVAR_W7=5.0
+.param DESVAR_L7=0.5
+
+.param DESVAR_W8=5.0
+.param DESVAR_L8=0.5
+
+.param DESVAR_W9=5.0
+.param DESVAR_L9=0.5
+
+.param DESVAR_W10=5.0
+.param DESVAR_L10=0.5
+
+.param DESVAR_M1=1
+.param DESVAR_M2=5
+.param DESVAR_M3=5
+
+.param IBIAS_A=10e-6
+
+* Resolved numeric inputs for the DC export; do not edit these aliases.
+.csparam export_desvar_w1={DESVAR_W1}
+.csparam export_desvar_l1={DESVAR_L1}
+.csparam export_desvar_w2={DESVAR_W2}
+.csparam export_desvar_l2={DESVAR_L2}
+.csparam export_desvar_w4={DESVAR_W4}
+.csparam export_desvar_l4={DESVAR_L4}
+.csparam export_desvar_w5={DESVAR_W5}
+.csparam export_desvar_l5={DESVAR_L5}
+.csparam export_desvar_w6={DESVAR_W6}
+.csparam export_desvar_l6={DESVAR_L6}
+.csparam export_desvar_w7={DESVAR_W7}
+.csparam export_desvar_l7={DESVAR_L7}
+.csparam export_desvar_w8={DESVAR_W8}
+.csparam export_desvar_l8={DESVAR_L8}
+.csparam export_desvar_w9={DESVAR_W9}
+.csparam export_desvar_l9={DESVAR_L9}
+.csparam export_desvar_w10={DESVAR_W10}
+.csparam export_desvar_l10={DESVAR_L10}
+.csparam export_desvar_m1={DESVAR_M1}
+.csparam export_desvar_m2={DESVAR_M2}
+.csparam export_desvar_m3={DESVAR_M3}
+.csparam export_ibias_a={IBIAS_A}
+.csparam export_supply_vdd={SUPPLY_VDD}
+.csparam export_supply_vss={SUPPLY_VSS}
+.csparam export_input_vcm={INPUT_VCM}
+.csparam export_load_c={LOAD_C}
+.csparam export_ac_density={AC_DENSITY}
+.csparam export_ac_start_hz={AC_START_HZ}
+.csparam export_ac_stop_hz={AC_STOP_HZ}
+.csparam export_ref_hz={REF_HZ}
+.csparam export_sr_low={SR_LOW}
+.csparam export_sr_high={SR_HIGH}
+
+* DUT uses LVT models; connectivity and sizing expressions match the source.
+.subckt DUT VINP VINN VOUT VDD VSS
+
+XPM12 VB1 NET4 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W4} L={DESVAR_L4} m=1
+XPM11 NET4 NET4 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W4} L={DESVAR_L4} m=1
+XPM10 NET3 VB2 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W2} L={DESVAR_L2} m=1
+XPM8 VB2 VB2 NET3 VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W2} L={DESVAR_L2} m={DESVAR_M2}
+
+XM10 NET2 VB2 NET27 VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M1}
+XM15 VOUT VB2 NET24 VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M1}
+XM9 NET27 NET2 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W8} L={DESVAR_L8} m={DESVAR_M1}
+XM5 NET24 NET2 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W8} L={DESVAR_L8} m={DESVAR_M1}
+XM16 NET11 VB2 NET25 VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M1}
+XM14 NET6 VB2 NET26 VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M1}
+XM8 NET26 NET6 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W8} L={DESVAR_L8} m={DESVAR_M1}
+XM6 NET25 NET6 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W8} L={DESVAR_L8} m={DESVAR_M1}
+
+XNM10 NET5 VB1 VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W5} L={DESVAR_L5} m=1
+XNM9 VB1 VB1 NET5 VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W5} L={DESVAR_L5} m={DESVAR_M3}
+XNM8 NET4 VB3 VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W1} L={DESVAR_L1} m=1
+XNM7 VB3 VB3 VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W1} L={DESVAR_L1} m=1
+XNM6 VB2 VB3 VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W1} L={DESVAR_L1} m=1
+
+XM13 NET23 NET11 VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W10} L={DESVAR_L10} m={DESVAR_M1}
+XM7 NET22 NET11 VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W10} L={DESVAR_L10} m={DESVAR_M1}
+XM1 NET11 VB1 NET22 VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W9} L={DESVAR_L9} m={DESVAR_M1}
+XNM5 NET1 VB3 VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W1} L={DESVAR_L1} m={2*DESVAR_M1}
+XM0 VOUT VB1 NET23 VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W9} L={DESVAR_L9} m={DESVAR_M1}
+XM11 NET2 VINP NET1 VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W6} L={DESVAR_L6} m={DESVAR_M1}
+XM12 NET6 VINN NET1 VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W6} L={DESVAR_L6} m={DESVAR_M1}
+
+IBIAS_SRC VDD VB3 DC {IBIAS_A}
+
+.ends DUT
+
+* -------- AC GAIN / UGF / PM: DC feedback, AC injection --------
+VDD_DM VDD_DM 0 DC {SUPPLY_VDD}
+VSS_DM VSS_DM 0 DC {SUPPLY_VSS}
+VINP_DM INP_DM 0 DC {INPUT_VCM}
+VINJ_DM SIGNAL_DM 0 DC {INPUT_VCM} AC 1
+LFB_DM OUT_DM INN_DM 1T
+CINJ_DM INN_DM SIGNAL_DM 1T
+XDUT_DM INP_DM INN_DM OUT_DM VDD_DM VSS_DM DUT
+CLOAD_DM OUT_DM VSS_DM {LOAD_C}
+
+* -------- CMRR: common-mode injection in a DC follower ---------
+* This instance also supplies the single-DUT DC power measurement.
+VDD_Q VDD_Q 0 DC {SUPPLY_VDD}
+VSS_Q VSS_Q 0 DC {SUPPLY_VSS}
+VCM_Q CM_DC 0 DC {INPUT_VCM}
+VCMAC_P INP_CM CM_DC DC 0 AC 1
+VCMAC_N INN_CM OUT_CM DC 0 AC 1
+XDUT_CM INP_CM INN_CM OUT_CM VDD_Q VSS_Q DUT
+CLOAD_CM OUT_CM VSS_Q {LOAD_C}
+
+* ------------------ POSITIVE-SUPPLY PSRR ----------------------
+VDD_P VDD_P 0 DC {SUPPLY_VDD} AC 1
+VSS_P VSS_P 0 DC {SUPPLY_VSS}
+VINP_P INP_P 0 DC {INPUT_VCM}
+XDUT_P INP_P OUT_P OUT_P VDD_P VSS_P DUT
+CLOAD_P OUT_P 0 {LOAD_C}
+
+* ------------------ NEGATIVE-SUPPLY PSRR ----------------------
+VDD_N VDD_N 0 DC {SUPPLY_VDD}
+VSS_N VSS_N 0 DC {SUPPLY_VSS} AC 1
+VINP_N INP_N 0 DC {INPUT_VCM}
+XDUT_N INP_N OUT_N OUT_N VDD_N VSS_N DUT
+CLOAD_N OUT_N 0 {LOAD_C}
+
+* ------------------ TRANSIENT SLEW RATE -----------------------
+VDD_SR VDD_SR 0 DC {SUPPLY_VDD}
+VSS_SR VSS_SR 0 DC {SUPPLY_VSS}
+VIN_SR IN_SR 0 DC {INPUT_VCM} PULSE({SR_LOW} {SR_HIGH} {SR_DELAY} {SR_INPUT_TR} {SR_INPUT_TF} {SR_WIDTH} {SR_PERIOD})
+XDUT_SR IN_SR OUT_SR OUT_SR VDD_SR VSS_SR DUT
+RLOAD_SR OUT_SR 0 1T
+CLOAD_SR OUT_SR 0 {LOAD_C}
+
+.control
+set noaskquit
+set units=radians
+set numdgt=15
+option numdgt=15
+set result_file=opamp1_metrics.txt
+set m_gain=nan
+set m_ugf=nan
+set m_pm=nan
+set m_cmrr=nan
+set m_psrr_plus=nan
+set m_psrr_minus=nan
+set m_slew_rise=nan
+set m_slew_fall=nan
+set m_power=nan
+
+* Create a result immediately; subsequent stages overwrite the result row.
+echo "DC_Gain_dB,UGF_Hz,Phase_Margin_deg,CMRR_dB,PSRR_Plus_dB,PSRR_Minus_dB,Slew_Rise_V_us,Slew_Fall_V_us,Power_Quiescent_uW" > $result_file
+echo "$m_gain,$m_ugf,$m_pm,$m_cmrr,$m_psrr_plus,$m_psrr_minus,$m_slew_rise,$m_slew_fall,$m_power" >> $result_file
+
+* Quiescent power: VDD_Q/VSS_Q feed only XDUT_CM, not all DUT copies.
+op
+let power_uw=-(v(VDD_Q)*i(VDD_Q)+v(VSS_Q)*i(VSS_Q))*1e6
+set m_power=$&power_uw
+let follower_error_v=v(OUT_CM)-v(INP_CM)
+let dm_cm_bias_difference_v=v(OUT_DM)-v(OUT_CM)
+print power_uw follower_error_v dm_cm_bias_difference_v
+
+
+* Capture model state NOW, while the active plot is the DC operating point.
+* The following @... queries require no extra transistor saves during AC/tran.
+* Model currents, conductances and charge/capacitance outputs already include m.
+* BSIM transcapacitance signs are retained, including negative off-diagonal terms.
+set filetype=ascii
+let op_input_desvar_w1=const.export_desvar_w1
+let op_input_desvar_l1=const.export_desvar_l1
+let op_input_desvar_w2=const.export_desvar_w2
+let op_input_desvar_l2=const.export_desvar_l2
+let op_input_desvar_w4=const.export_desvar_w4
+let op_input_desvar_l4=const.export_desvar_l4
+let op_input_desvar_w5=const.export_desvar_w5
+let op_input_desvar_l5=const.export_desvar_l5
+let op_input_desvar_w6=const.export_desvar_w6
+let op_input_desvar_l6=const.export_desvar_l6
+let op_input_desvar_w7=const.export_desvar_w7
+let op_input_desvar_l7=const.export_desvar_l7
+let op_input_desvar_w8=const.export_desvar_w8
+let op_input_desvar_l8=const.export_desvar_l8
+let op_input_desvar_w9=const.export_desvar_w9
+let op_input_desvar_l9=const.export_desvar_l9
+let op_input_desvar_w10=const.export_desvar_w10
+let op_input_desvar_l10=const.export_desvar_l10
+let op_input_desvar_m1=const.export_desvar_m1
+let op_input_desvar_m2=const.export_desvar_m2
+let op_input_desvar_m3=const.export_desvar_m3
+let op_input_ibias_a=const.export_ibias_a
+let op_input_supply_vdd=const.export_supply_vdd
+let op_input_supply_vss=const.export_supply_vss
+let op_input_input_vcm=const.export_input_vcm
+let op_input_load_c=const.export_load_c
+let op_input_ac_density=const.export_ac_density
+let op_input_ac_start_hz=const.export_ac_start_hz
+let op_input_ac_stop_hz=const.export_ac_stop_hz
+let op_input_ref_hz=const.export_ref_hz
+let op_input_sr_low=const.export_sr_low
+let op_input_sr_high=const.export_sr_high
+
+* XPM12: native model state, already including m multiplicity.
+let op_xpm12_w=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[w]
+let op_xpm12_l=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[l]
+let op_xpm12_m=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[m]
+let op_xpm12_id=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[id]
+let op_xpm12_gm=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[gm]
+let op_xpm12_gds=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[gds]
+let op_xpm12_gmbs=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[gmbs]
+let op_xpm12_vth=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[vth]
+let op_xpm12_vdsat=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[vdsat]
+let op_xpm12_cgg=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[cgg]
+let op_xpm12_cgs=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[cgs]
+let op_xpm12_cgd=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[cgd]
+let op_xpm12_cgb=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[cgb]
+let op_xpm12_cdg=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[cdg]
+let op_xpm12_cdd=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[cdd]
+let op_xpm12_cds=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[cds]
+let op_xpm12_cdb=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[cdb]
+let op_xpm12_csg=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[csg]
+let op_xpm12_csd=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[csd]
+let op_xpm12_css=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[css]
+let op_xpm12_csb=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[csb]
+let op_xpm12_cbg=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[cbg]
+let op_xpm12_cbd=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[cbd]
+let op_xpm12_cbs=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[cbs]
+let op_xpm12_cbb=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[cbb]
+let op_xpm12_capbd=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[capbd]
+let op_xpm12_capbs=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[capbs]
+let op_xpm12_qg=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[qg]
+let op_xpm12_qb=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[qb]
+let op_xpm12_qd=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[qd]
+let op_xpm12_qs=@m.xdut_cm.xpm12.msky130_fd_pr__pfet_01v8_lvt[qs]
+
+* XPM11: native model state, already including m multiplicity.
+let op_xpm11_w=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[w]
+let op_xpm11_l=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[l]
+let op_xpm11_m=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[m]
+let op_xpm11_id=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[id]
+let op_xpm11_gm=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[gm]
+let op_xpm11_gds=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[gds]
+let op_xpm11_gmbs=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[gmbs]
+let op_xpm11_vth=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[vth]
+let op_xpm11_vdsat=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[vdsat]
+let op_xpm11_cgg=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[cgg]
+let op_xpm11_cgs=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[cgs]
+let op_xpm11_cgd=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[cgd]
+let op_xpm11_cgb=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[cgb]
+let op_xpm11_cdg=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[cdg]
+let op_xpm11_cdd=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[cdd]
+let op_xpm11_cds=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[cds]
+let op_xpm11_cdb=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[cdb]
+let op_xpm11_csg=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[csg]
+let op_xpm11_csd=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[csd]
+let op_xpm11_css=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[css]
+let op_xpm11_csb=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[csb]
+let op_xpm11_cbg=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[cbg]
+let op_xpm11_cbd=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[cbd]
+let op_xpm11_cbs=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[cbs]
+let op_xpm11_cbb=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[cbb]
+let op_xpm11_capbd=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[capbd]
+let op_xpm11_capbs=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[capbs]
+let op_xpm11_qg=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[qg]
+let op_xpm11_qb=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[qb]
+let op_xpm11_qd=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[qd]
+let op_xpm11_qs=@m.xdut_cm.xpm11.msky130_fd_pr__pfet_01v8_lvt[qs]
+
+* XPM10: native model state, already including m multiplicity.
+let op_xpm10_w=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[w]
+let op_xpm10_l=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[l]
+let op_xpm10_m=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[m]
+let op_xpm10_id=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[id]
+let op_xpm10_gm=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[gm]
+let op_xpm10_gds=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[gds]
+let op_xpm10_gmbs=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[gmbs]
+let op_xpm10_vth=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[vth]
+let op_xpm10_vdsat=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[vdsat]
+let op_xpm10_cgg=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[cgg]
+let op_xpm10_cgs=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[cgs]
+let op_xpm10_cgd=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[cgd]
+let op_xpm10_cgb=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[cgb]
+let op_xpm10_cdg=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[cdg]
+let op_xpm10_cdd=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[cdd]
+let op_xpm10_cds=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[cds]
+let op_xpm10_cdb=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[cdb]
+let op_xpm10_csg=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[csg]
+let op_xpm10_csd=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[csd]
+let op_xpm10_css=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[css]
+let op_xpm10_csb=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[csb]
+let op_xpm10_cbg=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[cbg]
+let op_xpm10_cbd=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[cbd]
+let op_xpm10_cbs=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[cbs]
+let op_xpm10_cbb=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[cbb]
+let op_xpm10_capbd=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[capbd]
+let op_xpm10_capbs=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[capbs]
+let op_xpm10_qg=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[qg]
+let op_xpm10_qb=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[qb]
+let op_xpm10_qd=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[qd]
+let op_xpm10_qs=@m.xdut_cm.xpm10.msky130_fd_pr__pfet_01v8_lvt[qs]
+
+* XPM8: native model state, already including m multiplicity.
+let op_xpm8_w=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[w]
+let op_xpm8_l=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[l]
+let op_xpm8_m=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[m]
+let op_xpm8_id=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[id]
+let op_xpm8_gm=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[gm]
+let op_xpm8_gds=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[gds]
+let op_xpm8_gmbs=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[gmbs]
+let op_xpm8_vth=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[vth]
+let op_xpm8_vdsat=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[vdsat]
+let op_xpm8_cgg=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[cgg]
+let op_xpm8_cgs=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[cgs]
+let op_xpm8_cgd=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[cgd]
+let op_xpm8_cgb=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[cgb]
+let op_xpm8_cdg=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[cdg]
+let op_xpm8_cdd=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[cdd]
+let op_xpm8_cds=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[cds]
+let op_xpm8_cdb=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[cdb]
+let op_xpm8_csg=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[csg]
+let op_xpm8_csd=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[csd]
+let op_xpm8_css=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[css]
+let op_xpm8_csb=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[csb]
+let op_xpm8_cbg=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[cbg]
+let op_xpm8_cbd=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[cbd]
+let op_xpm8_cbs=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[cbs]
+let op_xpm8_cbb=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[cbb]
+let op_xpm8_capbd=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[capbd]
+let op_xpm8_capbs=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[capbs]
+let op_xpm8_qg=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[qg]
+let op_xpm8_qb=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[qb]
+let op_xpm8_qd=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[qd]
+let op_xpm8_qs=@m.xdut_cm.xpm8.msky130_fd_pr__pfet_01v8_lvt[qs]
+
+* XM10: native model state, already including m multiplicity.
+let op_xm10_w=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[w]
+let op_xm10_l=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[l]
+let op_xm10_m=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[m]
+let op_xm10_id=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[id]
+let op_xm10_gm=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[gm]
+let op_xm10_gds=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[gds]
+let op_xm10_gmbs=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[gmbs]
+let op_xm10_vth=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[vth]
+let op_xm10_vdsat=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[vdsat]
+let op_xm10_cgg=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[cgg]
+let op_xm10_cgs=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[cgs]
+let op_xm10_cgd=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[cgd]
+let op_xm10_cgb=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[cgb]
+let op_xm10_cdg=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[cdg]
+let op_xm10_cdd=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[cdd]
+let op_xm10_cds=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[cds]
+let op_xm10_cdb=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[cdb]
+let op_xm10_csg=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[csg]
+let op_xm10_csd=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[csd]
+let op_xm10_css=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[css]
+let op_xm10_csb=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[csb]
+let op_xm10_cbg=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[cbg]
+let op_xm10_cbd=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[cbd]
+let op_xm10_cbs=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[cbs]
+let op_xm10_cbb=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[cbb]
+let op_xm10_capbd=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[capbd]
+let op_xm10_capbs=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[capbs]
+let op_xm10_qg=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[qg]
+let op_xm10_qb=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[qb]
+let op_xm10_qd=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[qd]
+let op_xm10_qs=@m.xdut_cm.xm10.msky130_fd_pr__pfet_01v8_lvt[qs]
+
+* XM15: native model state, already including m multiplicity.
+let op_xm15_w=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[w]
+let op_xm15_l=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[l]
+let op_xm15_m=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[m]
+let op_xm15_id=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[id]
+let op_xm15_gm=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[gm]
+let op_xm15_gds=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[gds]
+let op_xm15_gmbs=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[gmbs]
+let op_xm15_vth=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[vth]
+let op_xm15_vdsat=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[vdsat]
+let op_xm15_cgg=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[cgg]
+let op_xm15_cgs=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[cgs]
+let op_xm15_cgd=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[cgd]
+let op_xm15_cgb=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[cgb]
+let op_xm15_cdg=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[cdg]
+let op_xm15_cdd=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[cdd]
+let op_xm15_cds=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[cds]
+let op_xm15_cdb=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[cdb]
+let op_xm15_csg=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[csg]
+let op_xm15_csd=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[csd]
+let op_xm15_css=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[css]
+let op_xm15_csb=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[csb]
+let op_xm15_cbg=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[cbg]
+let op_xm15_cbd=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[cbd]
+let op_xm15_cbs=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[cbs]
+let op_xm15_cbb=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[cbb]
+let op_xm15_capbd=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[capbd]
+let op_xm15_capbs=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[capbs]
+let op_xm15_qg=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[qg]
+let op_xm15_qb=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[qb]
+let op_xm15_qd=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[qd]
+let op_xm15_qs=@m.xdut_cm.xm15.msky130_fd_pr__pfet_01v8_lvt[qs]
+
+* XM9: native model state, already including m multiplicity.
+let op_xm9_w=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[w]
+let op_xm9_l=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[l]
+let op_xm9_m=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[m]
+let op_xm9_id=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[id]
+let op_xm9_gm=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[gm]
+let op_xm9_gds=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[gds]
+let op_xm9_gmbs=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[gmbs]
+let op_xm9_vth=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[vth]
+let op_xm9_vdsat=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[vdsat]
+let op_xm9_cgg=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[cgg]
+let op_xm9_cgs=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[cgs]
+let op_xm9_cgd=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[cgd]
+let op_xm9_cgb=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[cgb]
+let op_xm9_cdg=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[cdg]
+let op_xm9_cdd=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[cdd]
+let op_xm9_cds=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[cds]
+let op_xm9_cdb=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[cdb]
+let op_xm9_csg=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[csg]
+let op_xm9_csd=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[csd]
+let op_xm9_css=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[css]
+let op_xm9_csb=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[csb]
+let op_xm9_cbg=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[cbg]
+let op_xm9_cbd=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[cbd]
+let op_xm9_cbs=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[cbs]
+let op_xm9_cbb=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[cbb]
+let op_xm9_capbd=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[capbd]
+let op_xm9_capbs=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[capbs]
+let op_xm9_qg=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[qg]
+let op_xm9_qb=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[qb]
+let op_xm9_qd=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[qd]
+let op_xm9_qs=@m.xdut_cm.xm9.msky130_fd_pr__pfet_01v8_lvt[qs]
+
+* XM5: native model state, already including m multiplicity.
+let op_xm5_w=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[w]
+let op_xm5_l=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[l]
+let op_xm5_m=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[m]
+let op_xm5_id=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[id]
+let op_xm5_gm=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[gm]
+let op_xm5_gds=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[gds]
+let op_xm5_gmbs=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[gmbs]
+let op_xm5_vth=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[vth]
+let op_xm5_vdsat=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[vdsat]
+let op_xm5_cgg=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[cgg]
+let op_xm5_cgs=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[cgs]
+let op_xm5_cgd=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[cgd]
+let op_xm5_cgb=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[cgb]
+let op_xm5_cdg=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[cdg]
+let op_xm5_cdd=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[cdd]
+let op_xm5_cds=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[cds]
+let op_xm5_cdb=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[cdb]
+let op_xm5_csg=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[csg]
+let op_xm5_csd=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[csd]
+let op_xm5_css=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[css]
+let op_xm5_csb=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[csb]
+let op_xm5_cbg=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[cbg]
+let op_xm5_cbd=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[cbd]
+let op_xm5_cbs=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[cbs]
+let op_xm5_cbb=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[cbb]
+let op_xm5_capbd=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[capbd]
+let op_xm5_capbs=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[capbs]
+let op_xm5_qg=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[qg]
+let op_xm5_qb=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[qb]
+let op_xm5_qd=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[qd]
+let op_xm5_qs=@m.xdut_cm.xm5.msky130_fd_pr__pfet_01v8_lvt[qs]
+
+* XM16: native model state, already including m multiplicity.
+let op_xm16_w=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[w]
+let op_xm16_l=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[l]
+let op_xm16_m=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[m]
+let op_xm16_id=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[id]
+let op_xm16_gm=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[gm]
+let op_xm16_gds=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[gds]
+let op_xm16_gmbs=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[gmbs]
+let op_xm16_vth=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[vth]
+let op_xm16_vdsat=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[vdsat]
+let op_xm16_cgg=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[cgg]
+let op_xm16_cgs=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[cgs]
+let op_xm16_cgd=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[cgd]
+let op_xm16_cgb=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[cgb]
+let op_xm16_cdg=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[cdg]
+let op_xm16_cdd=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[cdd]
+let op_xm16_cds=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[cds]
+let op_xm16_cdb=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[cdb]
+let op_xm16_csg=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[csg]
+let op_xm16_csd=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[csd]
+let op_xm16_css=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[css]
+let op_xm16_csb=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[csb]
+let op_xm16_cbg=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[cbg]
+let op_xm16_cbd=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[cbd]
+let op_xm16_cbs=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[cbs]
+let op_xm16_cbb=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[cbb]
+let op_xm16_capbd=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[capbd]
+let op_xm16_capbs=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[capbs]
+let op_xm16_qg=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[qg]
+let op_xm16_qb=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[qb]
+let op_xm16_qd=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[qd]
+let op_xm16_qs=@m.xdut_cm.xm16.msky130_fd_pr__pfet_01v8_lvt[qs]
+
+* XM14: native model state, already including m multiplicity.
+let op_xm14_w=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[w]
+let op_xm14_l=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[l]
+let op_xm14_m=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[m]
+let op_xm14_id=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[id]
+let op_xm14_gm=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[gm]
+let op_xm14_gds=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[gds]
+let op_xm14_gmbs=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[gmbs]
+let op_xm14_vth=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[vth]
+let op_xm14_vdsat=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[vdsat]
+let op_xm14_cgg=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[cgg]
+let op_xm14_cgs=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[cgs]
+let op_xm14_cgd=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[cgd]
+let op_xm14_cgb=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[cgb]
+let op_xm14_cdg=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[cdg]
+let op_xm14_cdd=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[cdd]
+let op_xm14_cds=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[cds]
+let op_xm14_cdb=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[cdb]
+let op_xm14_csg=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[csg]
+let op_xm14_csd=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[csd]
+let op_xm14_css=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[css]
+let op_xm14_csb=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[csb]
+let op_xm14_cbg=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[cbg]
+let op_xm14_cbd=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[cbd]
+let op_xm14_cbs=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[cbs]
+let op_xm14_cbb=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[cbb]
+let op_xm14_capbd=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[capbd]
+let op_xm14_capbs=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[capbs]
+let op_xm14_qg=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[qg]
+let op_xm14_qb=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[qb]
+let op_xm14_qd=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[qd]
+let op_xm14_qs=@m.xdut_cm.xm14.msky130_fd_pr__pfet_01v8_lvt[qs]
+
+* XM8: native model state, already including m multiplicity.
+let op_xm8_w=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[w]
+let op_xm8_l=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[l]
+let op_xm8_m=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[m]
+let op_xm8_id=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[id]
+let op_xm8_gm=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[gm]
+let op_xm8_gds=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[gds]
+let op_xm8_gmbs=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[gmbs]
+let op_xm8_vth=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[vth]
+let op_xm8_vdsat=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[vdsat]
+let op_xm8_cgg=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[cgg]
+let op_xm8_cgs=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[cgs]
+let op_xm8_cgd=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[cgd]
+let op_xm8_cgb=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[cgb]
+let op_xm8_cdg=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[cdg]
+let op_xm8_cdd=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[cdd]
+let op_xm8_cds=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[cds]
+let op_xm8_cdb=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[cdb]
+let op_xm8_csg=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[csg]
+let op_xm8_csd=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[csd]
+let op_xm8_css=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[css]
+let op_xm8_csb=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[csb]
+let op_xm8_cbg=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[cbg]
+let op_xm8_cbd=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[cbd]
+let op_xm8_cbs=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[cbs]
+let op_xm8_cbb=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[cbb]
+let op_xm8_capbd=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[capbd]
+let op_xm8_capbs=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[capbs]
+let op_xm8_qg=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[qg]
+let op_xm8_qb=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[qb]
+let op_xm8_qd=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[qd]
+let op_xm8_qs=@m.xdut_cm.xm8.msky130_fd_pr__pfet_01v8_lvt[qs]
+
+* XM6: native model state, already including m multiplicity.
+let op_xm6_w=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[w]
+let op_xm6_l=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[l]
+let op_xm6_m=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[m]
+let op_xm6_id=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[id]
+let op_xm6_gm=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[gm]
+let op_xm6_gds=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[gds]
+let op_xm6_gmbs=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[gmbs]
+let op_xm6_vth=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[vth]
+let op_xm6_vdsat=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[vdsat]
+let op_xm6_cgg=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[cgg]
+let op_xm6_cgs=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[cgs]
+let op_xm6_cgd=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[cgd]
+let op_xm6_cgb=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[cgb]
+let op_xm6_cdg=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[cdg]
+let op_xm6_cdd=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[cdd]
+let op_xm6_cds=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[cds]
+let op_xm6_cdb=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[cdb]
+let op_xm6_csg=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[csg]
+let op_xm6_csd=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[csd]
+let op_xm6_css=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[css]
+let op_xm6_csb=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[csb]
+let op_xm6_cbg=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[cbg]
+let op_xm6_cbd=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[cbd]
+let op_xm6_cbs=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[cbs]
+let op_xm6_cbb=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[cbb]
+let op_xm6_capbd=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[capbd]
+let op_xm6_capbs=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[capbs]
+let op_xm6_qg=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[qg]
+let op_xm6_qb=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[qb]
+let op_xm6_qd=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[qd]
+let op_xm6_qs=@m.xdut_cm.xm6.msky130_fd_pr__pfet_01v8_lvt[qs]
+
+* XNM10: native model state, already including m multiplicity.
+let op_xnm10_w=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[w]
+let op_xnm10_l=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[l]
+let op_xnm10_m=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[m]
+let op_xnm10_id=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[id]
+let op_xnm10_gm=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[gm]
+let op_xnm10_gds=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[gds]
+let op_xnm10_gmbs=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[gmbs]
+let op_xnm10_vth=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[vth]
+let op_xnm10_vdsat=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[vdsat]
+let op_xnm10_cgg=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cgg]
+let op_xnm10_cgs=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cgs]
+let op_xnm10_cgd=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cgd]
+let op_xnm10_cgb=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cgb]
+let op_xnm10_cdg=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cdg]
+let op_xnm10_cdd=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cdd]
+let op_xnm10_cds=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cds]
+let op_xnm10_cdb=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cdb]
+let op_xnm10_csg=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[csg]
+let op_xnm10_csd=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[csd]
+let op_xnm10_css=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[css]
+let op_xnm10_csb=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[csb]
+let op_xnm10_cbg=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cbg]
+let op_xnm10_cbd=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cbd]
+let op_xnm10_cbs=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cbs]
+let op_xnm10_cbb=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cbb]
+let op_xnm10_capbd=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[capbd]
+let op_xnm10_capbs=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[capbs]
+let op_xnm10_qg=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[qg]
+let op_xnm10_qb=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[qb]
+let op_xnm10_qd=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[qd]
+let op_xnm10_qs=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[qs]
+
+* XNM9: native model state, already including m multiplicity.
+let op_xnm9_w=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[w]
+let op_xnm9_l=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[l]
+let op_xnm9_m=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[m]
+let op_xnm9_id=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[id]
+let op_xnm9_gm=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[gm]
+let op_xnm9_gds=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[gds]
+let op_xnm9_gmbs=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[gmbs]
+let op_xnm9_vth=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[vth]
+let op_xnm9_vdsat=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[vdsat]
+let op_xnm9_cgg=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cgg]
+let op_xnm9_cgs=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cgs]
+let op_xnm9_cgd=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cgd]
+let op_xnm9_cgb=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cgb]
+let op_xnm9_cdg=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cdg]
+let op_xnm9_cdd=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cdd]
+let op_xnm9_cds=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cds]
+let op_xnm9_cdb=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cdb]
+let op_xnm9_csg=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[csg]
+let op_xnm9_csd=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[csd]
+let op_xnm9_css=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[css]
+let op_xnm9_csb=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[csb]
+let op_xnm9_cbg=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cbg]
+let op_xnm9_cbd=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cbd]
+let op_xnm9_cbs=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cbs]
+let op_xnm9_cbb=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cbb]
+let op_xnm9_capbd=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[capbd]
+let op_xnm9_capbs=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[capbs]
+let op_xnm9_qg=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[qg]
+let op_xnm9_qb=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[qb]
+let op_xnm9_qd=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[qd]
+let op_xnm9_qs=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[qs]
+
+* XNM8: native model state, already including m multiplicity.
+let op_xnm8_w=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[w]
+let op_xnm8_l=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[l]
+let op_xnm8_m=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[m]
+let op_xnm8_id=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[id]
+let op_xnm8_gm=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[gm]
+let op_xnm8_gds=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[gds]
+let op_xnm8_gmbs=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[gmbs]
+let op_xnm8_vth=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[vth]
+let op_xnm8_vdsat=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[vdsat]
+let op_xnm8_cgg=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cgg]
+let op_xnm8_cgs=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cgs]
+let op_xnm8_cgd=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cgd]
+let op_xnm8_cgb=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cgb]
+let op_xnm8_cdg=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cdg]
+let op_xnm8_cdd=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cdd]
+let op_xnm8_cds=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cds]
+let op_xnm8_cdb=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cdb]
+let op_xnm8_csg=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[csg]
+let op_xnm8_csd=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[csd]
+let op_xnm8_css=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[css]
+let op_xnm8_csb=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[csb]
+let op_xnm8_cbg=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cbg]
+let op_xnm8_cbd=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cbd]
+let op_xnm8_cbs=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cbs]
+let op_xnm8_cbb=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cbb]
+let op_xnm8_capbd=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[capbd]
+let op_xnm8_capbs=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[capbs]
+let op_xnm8_qg=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[qg]
+let op_xnm8_qb=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[qb]
+let op_xnm8_qd=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[qd]
+let op_xnm8_qs=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[qs]
+
+* XNM7: native model state, already including m multiplicity.
+let op_xnm7_w=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[w]
+let op_xnm7_l=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[l]
+let op_xnm7_m=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[m]
+let op_xnm7_id=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[id]
+let op_xnm7_gm=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[gm]
+let op_xnm7_gds=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[gds]
+let op_xnm7_gmbs=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[gmbs]
+let op_xnm7_vth=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[vth]
+let op_xnm7_vdsat=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[vdsat]
+let op_xnm7_cgg=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cgg]
+let op_xnm7_cgs=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cgs]
+let op_xnm7_cgd=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cgd]
+let op_xnm7_cgb=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cgb]
+let op_xnm7_cdg=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cdg]
+let op_xnm7_cdd=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cdd]
+let op_xnm7_cds=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cds]
+let op_xnm7_cdb=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cdb]
+let op_xnm7_csg=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[csg]
+let op_xnm7_csd=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[csd]
+let op_xnm7_css=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[css]
+let op_xnm7_csb=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[csb]
+let op_xnm7_cbg=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cbg]
+let op_xnm7_cbd=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cbd]
+let op_xnm7_cbs=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cbs]
+let op_xnm7_cbb=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cbb]
+let op_xnm7_capbd=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[capbd]
+let op_xnm7_capbs=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[capbs]
+let op_xnm7_qg=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[qg]
+let op_xnm7_qb=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[qb]
+let op_xnm7_qd=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[qd]
+let op_xnm7_qs=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[qs]
+
+* XNM6: native model state, already including m multiplicity.
+let op_xnm6_w=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[w]
+let op_xnm6_l=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[l]
+let op_xnm6_m=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[m]
+let op_xnm6_id=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[id]
+let op_xnm6_gm=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[gm]
+let op_xnm6_gds=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[gds]
+let op_xnm6_gmbs=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[gmbs]
+let op_xnm6_vth=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[vth]
+let op_xnm6_vdsat=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[vdsat]
+let op_xnm6_cgg=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[cgg]
+let op_xnm6_cgs=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[cgs]
+let op_xnm6_cgd=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[cgd]
+let op_xnm6_cgb=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[cgb]
+let op_xnm6_cdg=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[cdg]
+let op_xnm6_cdd=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[cdd]
+let op_xnm6_cds=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[cds]
+let op_xnm6_cdb=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[cdb]
+let op_xnm6_csg=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[csg]
+let op_xnm6_csd=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[csd]
+let op_xnm6_css=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[css]
+let op_xnm6_csb=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[csb]
+let op_xnm6_cbg=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[cbg]
+let op_xnm6_cbd=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[cbd]
+let op_xnm6_cbs=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[cbs]
+let op_xnm6_cbb=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[cbb]
+let op_xnm6_capbd=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[capbd]
+let op_xnm6_capbs=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[capbs]
+let op_xnm6_qg=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[qg]
+let op_xnm6_qb=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[qb]
+let op_xnm6_qd=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[qd]
+let op_xnm6_qs=@m.xdut_cm.xnm6.msky130_fd_pr__nfet_01v8_lvt[qs]
+
+* XM13: native model state, already including m multiplicity.
+let op_xm13_w=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[w]
+let op_xm13_l=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[l]
+let op_xm13_m=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[m]
+let op_xm13_id=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[id]
+let op_xm13_gm=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[gm]
+let op_xm13_gds=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[gds]
+let op_xm13_gmbs=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[gmbs]
+let op_xm13_vth=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[vth]
+let op_xm13_vdsat=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[vdsat]
+let op_xm13_cgg=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[cgg]
+let op_xm13_cgs=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[cgs]
+let op_xm13_cgd=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[cgd]
+let op_xm13_cgb=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[cgb]
+let op_xm13_cdg=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[cdg]
+let op_xm13_cdd=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[cdd]
+let op_xm13_cds=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[cds]
+let op_xm13_cdb=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[cdb]
+let op_xm13_csg=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[csg]
+let op_xm13_csd=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[csd]
+let op_xm13_css=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[css]
+let op_xm13_csb=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[csb]
+let op_xm13_cbg=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[cbg]
+let op_xm13_cbd=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[cbd]
+let op_xm13_cbs=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[cbs]
+let op_xm13_cbb=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[cbb]
+let op_xm13_capbd=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[capbd]
+let op_xm13_capbs=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[capbs]
+let op_xm13_qg=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[qg]
+let op_xm13_qb=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[qb]
+let op_xm13_qd=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[qd]
+let op_xm13_qs=@m.xdut_cm.xm13.msky130_fd_pr__nfet_01v8_lvt[qs]
+
+* XM7: native model state, already including m multiplicity.
+let op_xm7_w=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[w]
+let op_xm7_l=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[l]
+let op_xm7_m=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[m]
+let op_xm7_id=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[id]
+let op_xm7_gm=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[gm]
+let op_xm7_gds=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[gds]
+let op_xm7_gmbs=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[gmbs]
+let op_xm7_vth=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[vth]
+let op_xm7_vdsat=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[vdsat]
+let op_xm7_cgg=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[cgg]
+let op_xm7_cgs=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[cgs]
+let op_xm7_cgd=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[cgd]
+let op_xm7_cgb=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[cgb]
+let op_xm7_cdg=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[cdg]
+let op_xm7_cdd=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[cdd]
+let op_xm7_cds=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[cds]
+let op_xm7_cdb=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[cdb]
+let op_xm7_csg=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[csg]
+let op_xm7_csd=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[csd]
+let op_xm7_css=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[css]
+let op_xm7_csb=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[csb]
+let op_xm7_cbg=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[cbg]
+let op_xm7_cbd=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[cbd]
+let op_xm7_cbs=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[cbs]
+let op_xm7_cbb=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[cbb]
+let op_xm7_capbd=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[capbd]
+let op_xm7_capbs=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[capbs]
+let op_xm7_qg=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[qg]
+let op_xm7_qb=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[qb]
+let op_xm7_qd=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[qd]
+let op_xm7_qs=@m.xdut_cm.xm7.msky130_fd_pr__nfet_01v8_lvt[qs]
+
+* XM1: native model state, already including m multiplicity.
+let op_xm1_w=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[w]
+let op_xm1_l=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[l]
+let op_xm1_m=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[m]
+let op_xm1_id=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[id]
+let op_xm1_gm=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[gm]
+let op_xm1_gds=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[gds]
+let op_xm1_gmbs=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[gmbs]
+let op_xm1_vth=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[vth]
+let op_xm1_vdsat=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[vdsat]
+let op_xm1_cgg=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[cgg]
+let op_xm1_cgs=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[cgs]
+let op_xm1_cgd=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[cgd]
+let op_xm1_cgb=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[cgb]
+let op_xm1_cdg=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[cdg]
+let op_xm1_cdd=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[cdd]
+let op_xm1_cds=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[cds]
+let op_xm1_cdb=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[cdb]
+let op_xm1_csg=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[csg]
+let op_xm1_csd=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[csd]
+let op_xm1_css=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[css]
+let op_xm1_csb=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[csb]
+let op_xm1_cbg=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[cbg]
+let op_xm1_cbd=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[cbd]
+let op_xm1_cbs=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[cbs]
+let op_xm1_cbb=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[cbb]
+let op_xm1_capbd=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[capbd]
+let op_xm1_capbs=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[capbs]
+let op_xm1_qg=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[qg]
+let op_xm1_qb=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[qb]
+let op_xm1_qd=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[qd]
+let op_xm1_qs=@m.xdut_cm.xm1.msky130_fd_pr__nfet_01v8_lvt[qs]
+
+* XNM5: native model state, already including m multiplicity.
+let op_xnm5_w=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[w]
+let op_xnm5_l=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[l]
+let op_xnm5_m=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[m]
+let op_xnm5_id=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[id]
+let op_xnm5_gm=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[gm]
+let op_xnm5_gds=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[gds]
+let op_xnm5_gmbs=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[gmbs]
+let op_xnm5_vth=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[vth]
+let op_xnm5_vdsat=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[vdsat]
+let op_xnm5_cgg=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[cgg]
+let op_xnm5_cgs=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[cgs]
+let op_xnm5_cgd=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[cgd]
+let op_xnm5_cgb=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[cgb]
+let op_xnm5_cdg=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[cdg]
+let op_xnm5_cdd=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[cdd]
+let op_xnm5_cds=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[cds]
+let op_xnm5_cdb=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[cdb]
+let op_xnm5_csg=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[csg]
+let op_xnm5_csd=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[csd]
+let op_xnm5_css=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[css]
+let op_xnm5_csb=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[csb]
+let op_xnm5_cbg=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[cbg]
+let op_xnm5_cbd=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[cbd]
+let op_xnm5_cbs=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[cbs]
+let op_xnm5_cbb=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[cbb]
+let op_xnm5_capbd=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[capbd]
+let op_xnm5_capbs=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[capbs]
+let op_xnm5_qg=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[qg]
+let op_xnm5_qb=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[qb]
+let op_xnm5_qd=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[qd]
+let op_xnm5_qs=@m.xdut_cm.xnm5.msky130_fd_pr__nfet_01v8_lvt[qs]
+
+* XM0: native model state, already including m multiplicity.
+let op_xm0_w=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[w]
+let op_xm0_l=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[l]
+let op_xm0_m=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[m]
+let op_xm0_id=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[id]
+let op_xm0_gm=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[gm]
+let op_xm0_gds=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[gds]
+let op_xm0_gmbs=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[gmbs]
+let op_xm0_vth=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[vth]
+let op_xm0_vdsat=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[vdsat]
+let op_xm0_cgg=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[cgg]
+let op_xm0_cgs=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[cgs]
+let op_xm0_cgd=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[cgd]
+let op_xm0_cgb=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[cgb]
+let op_xm0_cdg=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[cdg]
+let op_xm0_cdd=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[cdd]
+let op_xm0_cds=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[cds]
+let op_xm0_cdb=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[cdb]
+let op_xm0_csg=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[csg]
+let op_xm0_csd=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[csd]
+let op_xm0_css=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[css]
+let op_xm0_csb=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[csb]
+let op_xm0_cbg=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[cbg]
+let op_xm0_cbd=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[cbd]
+let op_xm0_cbs=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[cbs]
+let op_xm0_cbb=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[cbb]
+let op_xm0_capbd=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[capbd]
+let op_xm0_capbs=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[capbs]
+let op_xm0_qg=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[qg]
+let op_xm0_qb=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[qb]
+let op_xm0_qd=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[qd]
+let op_xm0_qs=@m.xdut_cm.xm0.msky130_fd_pr__nfet_01v8_lvt[qs]
+
+* XM11: native model state, already including m multiplicity.
+let op_xm11_w=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[w]
+let op_xm11_l=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[l]
+let op_xm11_m=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[m]
+let op_xm11_id=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[id]
+let op_xm11_gm=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[gm]
+let op_xm11_gds=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[gds]
+let op_xm11_gmbs=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[gmbs]
+let op_xm11_vth=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[vth]
+let op_xm11_vdsat=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[vdsat]
+let op_xm11_cgg=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[cgg]
+let op_xm11_cgs=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[cgs]
+let op_xm11_cgd=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[cgd]
+let op_xm11_cgb=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[cgb]
+let op_xm11_cdg=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[cdg]
+let op_xm11_cdd=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[cdd]
+let op_xm11_cds=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[cds]
+let op_xm11_cdb=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[cdb]
+let op_xm11_csg=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[csg]
+let op_xm11_csd=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[csd]
+let op_xm11_css=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[css]
+let op_xm11_csb=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[csb]
+let op_xm11_cbg=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[cbg]
+let op_xm11_cbd=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[cbd]
+let op_xm11_cbs=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[cbs]
+let op_xm11_cbb=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[cbb]
+let op_xm11_capbd=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[capbd]
+let op_xm11_capbs=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[capbs]
+let op_xm11_qg=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[qg]
+let op_xm11_qb=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[qb]
+let op_xm11_qd=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[qd]
+let op_xm11_qs=@m.xdut_cm.xm11.msky130_fd_pr__nfet_01v8_lvt[qs]
+
+* XM12: native model state, already including m multiplicity.
+let op_xm12_w=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[w]
+let op_xm12_l=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[l]
+let op_xm12_m=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[m]
+let op_xm12_id=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[id]
+let op_xm12_gm=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[gm]
+let op_xm12_gds=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[gds]
+let op_xm12_gmbs=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[gmbs]
+let op_xm12_vth=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[vth]
+let op_xm12_vdsat=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[vdsat]
+let op_xm12_cgg=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[cgg]
+let op_xm12_cgs=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[cgs]
+let op_xm12_cgd=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[cgd]
+let op_xm12_cgb=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[cgb]
+let op_xm12_cdg=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[cdg]
+let op_xm12_cdd=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[cdd]
+let op_xm12_cds=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[cds]
+let op_xm12_cdb=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[cdb]
+let op_xm12_csg=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[csg]
+let op_xm12_csd=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[csd]
+let op_xm12_css=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[css]
+let op_xm12_csb=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[csb]
+let op_xm12_cbg=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[cbg]
+let op_xm12_cbd=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[cbd]
+let op_xm12_cbs=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[cbs]
+let op_xm12_cbb=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[cbb]
+let op_xm12_capbd=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[capbd]
+let op_xm12_capbs=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[capbs]
+let op_xm12_qg=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[qg]
+let op_xm12_qb=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[qb]
+let op_xm12_qd=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[qd]
+let op_xm12_qs=@m.xdut_cm.xm12.msky130_fd_pr__nfet_01v8_lvt[qs]
+
+* Full precision is kept in this ASCII raw file, not in echo-expanded strings.
+write opamp1_dc_operating_point.raw all
+echo DC operating point saved to opamp1_dc_operating_point.raw
+* Free the exported snapshot before AC/tran; configured constants survive.
+* No subsequent metric calculation needs a live DC vector from this plot.
+destroy $curplot
+
+* One AC sweep supplies every AC metric; UGF and PM share one crossing.
+ac dec $&cfg_ac_density $&cfg_ac_start $&cfg_ac_stop
+let inverting_gain=-v(OUT_DM)/v(INN_DM)
+let gain_mag=mag(inverting_gain)
+let phase_deg=180/pi*cph(inverting_gain)
+let phase_origin=phase_deg[0]
+* Anchor the continuous phase near its low-frequency branch.
+while phase_origin > 180
+    let phase_deg=phase_deg-360
+    let phase_origin=phase_origin-360
+end
+while phase_origin < -180
+    let phase_deg=phase_deg+360
+    let phase_origin=phase_origin+360
+end
+meas ac gain_ref_mag FIND gain_mag AT=$&cfg_ref_hz
+if gain_ref_mag > 0
+    let dc_gain_db=20*log10(gain_ref_mag)
+    set m_gain=$&dc_gain_db
+else
+    set m_gain=-inf
+end
+
+* Find the first FALLING crossing, then interpolate BOTH metrics in log(f).
+* This avoids attempting meas on a missing crossing and preserves nan.
+let ac_index=1
+let first_fall=-1
+let falling_crossings=0
+let ac_count=length(frequency)
+while ac_index < ac_count
+    if gain_mag[ac_index-1] >= 1
+        if gain_mag[ac_index] < 1
+            let falling_crossings=falling_crossings+1
+            if first_fall < 0
+                let first_fall=ac_index
+            end
+        end
+    end
+    let ac_index=ac_index+1
+end
+if first_fall > 0
+    let i_hi=first_fall
+    let i_lo=first_fall-1
+    if gain_mag[i_hi] > 0
+        let db_lo=20*log10(gain_mag[i_lo])
+        let db_hi=20*log10(gain_mag[i_hi])
+        let fraction=-db_lo/(db_hi-db_lo)
+        let ugf_hz=exp(log(frequency[i_lo])+fraction*(log(frequency[i_hi])-log(frequency[i_lo])))
+        set m_ugf=$&ugf_hz
+        if real(inverting_gain[0]) > 0
+            let phase_at_ugf_deg=phase_deg[i_lo]+fraction*(phase_deg[i_hi]-phase_deg[i_lo])
+            let phase_margin_deg=180+phase_at_ugf_deg
+            set m_pm=$&phase_margin_deg
+        else
+            echo PM unavailable: low-frequency loop polarity is not negative feedback.
+        end
+    end
+else
+    echo UGF/PM unavailable: no falling unity-gain crossing in the configured sweep.
+end
+print falling_crossings
+
+* CMRR: Vout=gp*VinP+gn*VinN; G=-gn, H=(gp+gn)/(1+G).
+* Hence ACM=H*(1+G), ADM=G+ACM/2, CMRR=|ADM/ACM|.
+let common_ripple=v(INP_CM)-v(CM_DC)
+let closed_cm_transfer=v(OUT_CM)/common_ripple
+let acm=closed_cm_transfer*(1+inverting_gain)
+let adm=inverting_gain+0.5*acm
+let adm_mag=mag(adm)
+let acm_mag=mag(acm)
+meas ac adm_ref_mag FIND adm_mag AT=$&cfg_ref_hz
+meas ac acm_ref_mag FIND acm_mag AT=$&cfg_ref_hz
+if adm_ref_mag > 0
+    if acm_ref_mag > 0
+        let cmrr_db=20*log10(adm_ref_mag/acm_ref_mag)
+        set m_cmrr=$&cmrr_db
+    else
+        set m_cmrr=inf
+    end
+end
+
+* PSRR follows the repository's follower-rejection convention.
+let plus_output_mag=mag(v(INP_P)-v(OUT_P))
+let minus_output_mag=mag(v(INP_N)-v(OUT_N))
+let plus_rail_mag=mag(v(VDD_P))
+let minus_rail_mag=mag(v(VSS_N))
+meas ac plus_out_ref FIND plus_output_mag AT=$&cfg_ref_hz
+meas ac minus_out_ref FIND minus_output_mag AT=$&cfg_ref_hz
+meas ac plus_rail_ref FIND plus_rail_mag AT=$&cfg_ref_hz
+meas ac minus_rail_ref FIND minus_rail_mag AT=$&cfg_ref_hz
+if plus_out_ref > 0
+    let psrr_plus_db=20*log10(plus_rail_ref/plus_out_ref)
+    set m_psrr_plus=$&psrr_plus_db
+else
+    set m_psrr_plus=inf
+end
+if minus_out_ref > 0
+    let psrr_minus_db=20*log10(minus_rail_ref/minus_out_ref)
+    set m_psrr_minus=$&psrr_minus_db
+else
+    set m_psrr_minus=inf
+end
+
+* Save completed DC/AC metrics before starting the transient analysis.
+echo "DC_Gain_dB,UGF_Hz,Phase_Margin_deg,CMRR_dB,PSRR_Plus_dB,PSRR_Minus_dB,Slew_Rise_V_us,Slew_Fall_V_us,Power_Quiescent_uW" > $result_file
+echo "$m_gain,$m_ugf,$m_pm,$m_cmrr,$m_psrr_plus,$m_psrr_minus,$m_slew_rise,$m_slew_fall,$m_power" >> $result_file
+
+tran $&cfg_tran_step $&cfg_tran_stop 0 $&cfg_tran_max_step
+let sr_output=v(OUT_SR)
+meas tran output_low AVG v(OUT_SR) FROM=$&cfg_low_start TO=$&cfg_low_stop
+meas tran output_high AVG v(OUT_SR) FROM=$&cfg_high_start TO=$&cfg_high_stop
+let output_swing=output_high-output_low
+let rise_t10=-1
+let rise_t90=-1
+let fall_t90=-1
+let fall_t10=-1
+
+if output_swing > cfg_min_swing
+    let level10=output_low+0.1*output_swing
+    let level90=output_low+0.9*output_swing
+    let tr_index=1
+    let tr_count=length(time)
+    * Restrict both ends of each crossing interval to its FIRST-edge window.
+    * Subsequent pulse periods cannot accidentally complete a missing edge.
+    while tr_index < tr_count
+        let v_before=sr_output[tr_index-1]
+        let v_after=sr_output[tr_index]
+        let t_before=time[tr_index-1]
+        let t_after=time[tr_index]
+        if t_before >= cfg_rise_start
+            if t_after <= cfg_rise_end
+                if v_after > v_before
+                    if rise_t10 < 0
+                        if v_before <= level10
+                            if v_after > level10
+                                let rise_t10=t_before+(level10-v_before)*(t_after-t_before)/(v_after-v_before)
+                            end
+                        end
+                    end
+                    if rise_t90 < 0
+                        if v_before <= level90
+                            if v_after > level90
+                                let rise_t90=t_before+(level90-v_before)*(t_after-t_before)/(v_after-v_before)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if t_before >= cfg_fall_start
+            if t_after <= cfg_fall_end
+                if v_after < v_before
+                    if fall_t90 < 0
+                        if v_before >= level90
+                            if v_after < level90
+                                let fall_t90=t_before+(level90-v_before)*(t_after-t_before)/(v_after-v_before)
+                            end
+                        end
+                    end
+                    if fall_t10 < 0
+                        if v_before >= level10
+                            if v_after < level10
+                                let fall_t10=t_before+(level10-v_before)*(t_after-t_before)/(v_after-v_before)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        let tr_index=tr_index+1
+    end
+    if rise_t10 >= 0
+        if rise_t90 > rise_t10
+            let slew_rise_v_us=0.8*output_swing/(rise_t90-rise_t10)/1e6
+            set m_slew_rise=$&slew_rise_v_us
+        end
+    end
+    if fall_t90 >= 0
+        if fall_t10 > fall_t90
+            let slew_fall_v_us=0.8*output_swing/(fall_t10-fall_t90)/1e6
+            set m_slew_fall=$&slew_fall_v_us
+        end
+    end
+else
+    echo SR unavailable: reversed or negligible settled output swing.
+end
+print output_low output_high output_swing rise_t10 rise_t90 fall_t90 fall_t10
+
+* Final result: exactly one header and one nine-column row.
+echo "DC_Gain_dB,UGF_Hz,Phase_Margin_deg,CMRR_dB,PSRR_Plus_dB,PSRR_Minus_dB,Slew_Rise_V_us,Slew_Fall_V_us,Power_Quiescent_uW" > $result_file
+echo "$m_gain,$m_ugf,$m_pm,$m_cmrr,$m_psrr_plus,$m_psrr_minus,$m_slew_rise,$m_slew_fall,$m_power" >> $result_file
+echo Results saved to $result_file
+* Python creates the Excel workbook and a one-design-point WIDE CSV.
+* The matching exporter validates all 24 MOS devices and 22 design inputs.
+* If Python/openpyxl is unavailable, the raw DC file and metrics TXT remain usable.
+shell python3 opamp1_export_excel.py --netlist Opamp1_all_metrics.cir
+quit
+.endc
+.end
