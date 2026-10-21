@@ -12,6 +12,7 @@ from pathlib import Path
 from ...circuit_ir import parse_circuit
 from ...circuit_ir.schema import DeviceType
 from ..operating_point_contract import OP_SCHEMA_VERSION
+from ..sqlite_access import write_transaction
 
 # Version 1's verified collector. Its bias deck and feasibility definitions
 # are preserved by the version-2 field-only upgrade.
@@ -150,16 +151,22 @@ def bind_context(database, context):
 
 def record_invocation(database, run_id, design_key, category, bench, operation):
     """A durable launch reservation is kept even if a worker dies mid-command."""
-    with closing(sqlite3.connect(database, timeout=60)) as con, con:
-        cursor = con.execute("INSERT INTO spice_invocations(run_id,design_key,category,bench,status) VALUES (?,?,?,?, 'reserved')",
-                             (run_id, design_key, category, bench))
-        event = cursor.lastrowid
+    event = write_transaction(database, lambda con: con.execute(
+        "INSERT INTO spice_invocations(run_id,design_key,category,bench,status) VALUES (?,?,?,?, 'reserved')",
+        (run_id, design_key, category, bench)).lastrowid)
+    # Neither the Python lock nor a SQLite transaction spans the simulation.
     try:
         value = operation()
-    except BaseException:
-        with closing(sqlite3.connect(database, timeout=60)) as con, con:
-            con.execute("UPDATE spice_invocations SET status='failed' WHERE invocation_id=?", (event,))
+    except BaseException as exc:
+        try:
+            write_transaction(database, lambda con: con.execute(
+                "UPDATE spice_invocations SET status='failed' WHERE invocation_id=?", (event,)))
+        except Exception as ledger_error:
+            # Preserve the launch error even if failure accounting also fails.
+            # The durable reservation remains available for inspection.
+            if hasattr(exc, "add_note"):
+                exc.add_note(f"Could not mark SPICE invocation {event} failed: {ledger_error}")
         raise
-    with closing(sqlite3.connect(database, timeout=60)) as con, con:
-        con.execute("UPDATE spice_invocations SET status='finished' WHERE invocation_id=?", (event,))
+    write_transaction(database, lambda con: con.execute(
+        "UPDATE spice_invocations SET status='finished' WHERE invocation_id=?", (event,)))
     return value

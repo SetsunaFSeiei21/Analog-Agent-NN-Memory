@@ -1,0 +1,37 @@
+{
+  "upgrades": [
+    {
+      "base_commit": "5133d5b9ebe34ee047cf5b9f88609d45410a42ad",
+      "before": {
+        "context.py": "65782152239f7495b51a5d5475f39e9add14b340e896cb3b623de5309c515ed1",
+        "controller.py": "e58db6a2c5b3229dacba626b0dd63451cd5d3839d03f3f6eaa56287276e438e5"
+      },
+      "after": {
+        "context.py": "f34d7223f0158064f9f9c76bca5a788dff8c4462b60938697390f7af5522eb58",
+        "controller.py": "bdffd980ba6e5842ab637e189ad9824625a9800a53c78ad64ea398756fa8e0ab"
+      }
+    }
+  ],
+  "reverse_edits": {
+    "context.py": [
+      {
+        "before": "",
+        "after": "from ..sqlite_access import write_transaction\n"
+      },
+      {
+        "before": "def record_invocation(database, run_id, design_key, category, bench, operation):\n    \"\"\"A durable launch reservation is kept even if a worker dies mid-command.\"\"\"\n    with closing(sqlite3.connect(database, timeout=60)) as con, con:\n        cursor = con.execute(\"INSERT INTO spice_invocations(run_id,design_key,category,bench,status) VALUES (?,?,?,?, 'reserved')\",\n                             (run_id, design_key, category, bench))\n        event = cursor.lastrowid\n    try:\n        value = operation()\n    except BaseException:\n        with closing(sqlite3.connect(database, timeout=60)) as con, con:\n            con.execute(\"UPDATE spice_invocations SET status='failed' WHERE invocation_id=?\", (event,))\n        raise\n    with closing(sqlite3.connect(database, timeout=60)) as con, con:\n        con.execute(\"UPDATE spice_invocations SET status='finished' WHERE invocation_id=?\", (event,))\n    return value\n",
+        "after": "def record_invocation(database, run_id, design_key, category, bench, operation):\n    \"\"\"A durable launch reservation is kept even if a worker dies mid-command.\"\"\"\n    event = write_transaction(database, lambda con: con.execute(\n        \"INSERT INTO spice_invocations(run_id,design_key,category,bench,status) VALUES (?,?,?,?, 'reserved')\",\n        (run_id, design_key, category, bench)).lastrowid)\n    # Neither the Python lock nor a SQLite transaction spans the simulation.\n    try:\n        value = operation()\n    except BaseException as exc:\n        try:\n            write_transaction(database, lambda con: con.execute(\n                \"UPDATE spice_invocations SET status='failed' WHERE invocation_id=?\", (event,)))\n        except Exception as ledger_error:\n            # Preserve the launch error even if failure accounting also fails.\n            # The durable reservation remains available for inspection.\n            if hasattr(exc, \"add_note\"):\n                exc.add_note(f\"Could not mark SPICE invocation {event} failed: {ledger_error}\")\n        raise\n    write_transaction(database, lambda con: con.execute(\n        \"UPDATE spice_invocations SET status='finished' WHERE invocation_id=?\", (event,)))\n    return value\n"
+      }
+    ],
+    "controller.py": [
+      {
+        "before": "",
+        "after": "from ..resume_compat import validate_resume_configuration\n"
+      },
+      {
+        "before": "                if state[\"config_fingerprint\"] != fingerprint or row[\"requested_points\"] != n_points:\n                    raise ValueError(\"Resume configuration/seed/context/n_points differs from original run\")\n                run_id = resume_run_id\n",
+        "after": "                if row[\"requested_points\"] != n_points:\n                    raise ValueError(\"Resume configuration/seed/context/n_points differs from original run\")\n                upgraded = validate_resume_configuration(\n                    json.loads(row[\"config_json\"]), state[\"config_fingerprint\"], configuration)\n                run_id = resume_run_id\n                if upgraded:\n                    metadata = json.loads(row[\"metadata_json\"])\n                    metadata.setdefault(\"storage_resume_upgrades\", []).append({\n                        \"from\": state[\"config_fingerprint\"], \"to\": fingerprint,\n                        \"previous_implementation\": json.loads(row[\"config_json\"])[\"implementation\"],\n                        \"reason\": \"serialized SQLite invocation writes with bounded retries\"})\n                    state[\"config_fingerprint\"] = fingerprint\n                    con.execute(\"UPDATE sampling_runs SET config_json=?,metadata_json=? WHERE run_id=?\",\n                                (json.dumps(configuration), json.dumps(metadata), run_id))\n                    con.execute(\"UPDATE sampling_state SET state_json=? WHERE run_id=?\", (json.dumps(state), run_id))\n                    self.logger.info(\"Resume storage repair verified; retaining saved RNG, pending batch and samples: %s\", run_id)\n"
+      }
+    ]
+  }
+}

@@ -13,6 +13,7 @@ from scipy.stats import qmc
 
 from ...circuit_ir import parse_circuit
 from ..sampling_controller import Sampling_Controller
+from ..resume_compat import validate_resume_configuration
 from .bayesian import ConstrainedBayesianSampler
 from .config import DesignDomain, METHODS, allocate, load_config
 from .context import bind_context, digest, simulation_context, source_identity
@@ -159,9 +160,22 @@ class DatasetSamplingController(Sampling_Controller):
                 if row is None:
                     raise ValueError("Unknown resumable run")
                 state = json.loads(row["state_json"])
-                if state["config_fingerprint"] != fingerprint or row["requested_points"] != n_points:
+                if row["requested_points"] != n_points:
                     raise ValueError("Resume configuration/seed/context/n_points differs from original run")
+                upgraded = validate_resume_configuration(
+                    json.loads(row["config_json"]), state["config_fingerprint"], configuration)
                 run_id = resume_run_id
+                if upgraded:
+                    metadata = json.loads(row["metadata_json"])
+                    metadata.setdefault("storage_resume_upgrades", []).append({
+                        "from": state["config_fingerprint"], "to": fingerprint,
+                        "previous_implementation": json.loads(row["config_json"])["implementation"],
+                        "reason": "serialized SQLite invocation writes with bounded retries"})
+                    state["config_fingerprint"] = fingerprint
+                    con.execute("UPDATE sampling_runs SET config_json=?,metadata_json=? WHERE run_id=?",
+                                (json.dumps(configuration), json.dumps(metadata), run_id))
+                    con.execute("UPDATE sampling_state SET state_json=? WHERE run_id=?", (json.dumps(state), run_id))
+                    self.logger.info("Resume storage repair verified; retaining saved RNG, pending batch and samples: %s", run_id)
                 con.execute("UPDATE sampling_runs SET status='RUNNING', completed_at=NULL,error_message=NULL,n_workers=? WHERE run_id=?", (n_workers, run_id))
         if resume_run_id is None:
             generators = {name: np.random.default_rng(seed) for name, seed in zip(METHODS, np.random.SeedSequence(self.seed).spawn(5))}

@@ -13,7 +13,7 @@ import pytest
 from src.circuit_ir import parse_circuit
 from src.sample_optimize.advanced.bayesian import ConstrainedBayesianSampler
 from src.sample_optimize.advanced.config import DesignDomain, METHODS, allocate, load_config
-from src.sample_optimize.advanced.context import bind_context, record_invocation
+from src.sample_optimize.advanced.context import bind_context, digest, record_invocation
 from src.sample_optimize.advanced.controller import DatasetSamplingController
 from src.sample_optimize.advanced.lut import MosLUT
 from src.sample_optimize.advanced.gmid import GmidSampler
@@ -200,6 +200,74 @@ def test_resume_pending_batch_keeps_quota_rng_and_saved_points(tmp_path):
     assert resumed.budgets["extra_or_unsaved_evaluation_attempts"] == 2
     with pytest.raises(ValueError, match="differs"):
         interrupted.sample(13, 1, resume_run_id=resumed.run_id)
+
+
+def test_storage_upgrade_resume_preserves_pending_rng_and_saved_points(tmp_path):
+    reference = bare_controller(tmp_path / "reference")
+    reference.sample(12, 1)
+    interrupted = bare_controller(tmp_path / "interrupted")
+    actual = interrupted.simulator.simulate_batch
+    calls = []
+    pending = []
+    def stop(source, workers, designs, continue_on_error):
+        calls.append(1)
+        if len(calls) == 3:
+            pending.extend(np.asarray(designs).tolist())
+            raise sqlite3.OperationalError("database is locked")
+        return actual(source, workers, designs, continue_on_error)
+    interrupted.simulator.simulate_batch = stop
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        interrupted.sample(12, 8)
+    manifest = json.loads((PROJECT / "src/sample_optimize/storage_resume_compat.json").read_text())
+    with interrupted.history_store._connect() as con:
+        row = con.execute("SELECT run_id,config_json FROM sampling_runs").fetchone()
+        old = json.loads(row[1])
+        # Real historical hashes from the parent revision, all other config intact.
+        old["implementation"].update(manifest["upgrades"][0]["before"])
+        state = json.loads(con.execute("SELECT state_json FROM sampling_state").fetchone()[0])
+        state["config_fingerprint"] = digest(old)
+        con.execute("UPDATE sampling_runs SET config_json=?", (json.dumps(old),))
+        con.execute("UPDATE sampling_state SET state_json=?", (json.dumps(state),))
+        saved = [tuple(r) for r in con.execute("SELECT * FROM samples ORDER BY sample_id")]
+    resumed_batches = []
+    def resume(source, workers, designs, continue_on_error):
+        assert workers == 32
+        resumed_batches.append(np.asarray(designs).tolist())
+        return actual(source, workers, designs, continue_on_error)
+    interrupted.simulator.simulate_batch = resume
+    result = interrupted.sample(12, 32, resume_run_id=row[0])
+    assert result.run_id == row[0]
+    assert resumed_batches[0] == pending
+    with interrupted.history_store._connect() as con:
+        all_rows = [tuple(r) for r in con.execute("SELECT * FROM samples ORDER BY sample_id")]
+        assert all_rows[:len(saved)] == saved
+        designs = [tuple(r) for r in con.execute("SELECT sample_method,design_values_json FROM samples ORDER BY sample_id")]
+        row = con.execute("SELECT config_json,metadata_json,n_workers FROM sampling_runs").fetchone()
+        assert row[2] == 32
+        assert json.loads(row[1])["storage_resume_upgrades"][0]["from"] == digest(old)
+        state = json.loads(con.execute("SELECT state_json FROM sampling_state").fetchone()[0])
+        assert state["config_fingerprint"] == digest(json.loads(row[0]))
+    with reference.history_store._connect() as con:
+        assert designs == [tuple(r) for r in con.execute("SELECT sample_method,design_values_json FROM samples ORDER BY sample_id")]
+    # A second resume uses the current fingerprint, without another migration.
+    interrupted.sample(12, 32, resume_run_id=result.run_id)
+
+
+@pytest.mark.parametrize("change", ["seed", "batch_size", "context", "sampler", "unknown_storage", "future_storage"])
+def test_storage_upgrade_rejects_unrelated_or_unverified_drift(tmp_path, change):
+    from src.sample_optimize.resume_compat import validate_resume_configuration
+    manifest = json.loads((PROJECT / "src/sample_optimize/storage_resume_compat.json").read_text())["upgrades"][0]
+    old = {"seed": 42, "sampling": {"batch_size": 32}, "context_fingerprint": "original",
+           "implementation": {**manifest["before"], "gmid.py": "same"}}
+    current = {**old, "implementation": {**manifest["after"], "gmid.py": "same"}}
+    if change == "seed": current["seed"] = 43
+    if change == "batch_size": current["sampling"] = {"batch_size": 64}
+    if change == "context": current["context_fingerprint"] = "different"
+    if change == "sampler": current["implementation"]["gmid.py"] = "different"
+    if change == "unknown_storage": old["implementation"]["context.py"] = "unreviewed"
+    if change == "future_storage": current["implementation"]["context.py"] = "unreviewed"
+    with pytest.raises(ValueError, match="differs"):
+        validate_resume_configuration(old, digest(old), current)
 
 
 def test_bayesian_history_excludes_hidden_labels(tmp_path):

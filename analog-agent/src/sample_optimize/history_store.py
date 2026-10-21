@@ -11,7 +11,7 @@ import tempfile
 import uuid
 
 from datetime import datetime, timezone
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from itertools import chain, groupby
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
@@ -19,6 +19,7 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 import numpy as np
 
 from .operating_point_contract import DEVICE_FIELDS, device_values, finite_or_none
+from .sqlite_access import database_lock
 
 
 __all__ = ["ACCESS_LEVELS", "SamplingHistoryStore"]
@@ -83,17 +84,16 @@ class SamplingHistoryStore:
 
     @contextmanager
     def _connect(self):
-        connection = sqlite3.connect(self.database_path, timeout=30.0)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute(f"PRAGMA journal_mode = {self.journal_mode}")
-        connection.execute("PRAGMA synchronous = FULL")
-        connection.execute("PRAGMA busy_timeout = 30000")
-        try:
+        # Invocation workers use the same per-file lock. Never leave a
+        # connection open if a PRAGMA fails before entering the transaction.
+        with database_lock(self.database_path), closing(sqlite3.connect(self.database_path, timeout=30.0)) as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute(f"PRAGMA journal_mode = {self.journal_mode}")
+            connection.execute("PRAGMA synchronous = FULL")
+            connection.execute("PRAGMA busy_timeout = 30000")
             with connection:
                 yield connection
-        finally:
-            connection.close()
 
     def _initialize_database(self) -> None:
         with self._connect() as connection:
