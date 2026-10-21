@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -23,6 +24,15 @@ from src.sample_optimize.simulating import SimulationBatchResult
 PROJECT = Path(__file__).resolve().parents[1]
 
 
+def synthetic_lut(metadata, values, circuit):
+    """Attach an independent analytic oracle to the circuit's actual models."""
+    metadata = dict(metadata)
+    lengths = metadata.pop("length_m")
+    metadata["model_tables"] = {d.model.lower(): {"length_m": lengths}
+                                for d in circuit.devices if d.model}
+    return MosLUT(metadata, {model: values for model in metadata["model_tables"]})
+
+
 @pytest.mark.parametrize("name", REFERENCES)
 @pytest.mark.parametrize("override", [None, {}, {"default": False}])
 def test_profiles_cover_shared_mos_groups(name, override):
@@ -36,10 +46,9 @@ def test_profiles_cover_shared_mos_groups(name, override):
     if name == "Opamp0":
         assert "XNM6" not in signal and "XNM5" not in signal
         by_width = {g.width: g for g in groups}
-        assert set(by_width) == {f"DESVAR_W{i}" for i in range(1, 10)}
-        assert by_width["DESVAR_W3"].members == ("XNM6",)
-        assert by_width["DESVAR_W8"].members == ("XNM5",)
-        assert by_width["DESVAR_W9"].members == ("XPM6",)
+        assert set(by_width) == {f"DESVAR_W{i}" for i in range(1, 8)}
+        assert by_width["DESVAR_W3"].members == ("XNM6", "XNM5")
+        assert by_width["DESVAR_W1"].members == ("XPM9", "XPM8", "XPM7", "XPM6")
     if name == "Opamp1":
         assert "XPM10" not in signal and "XNM10" not in signal
 
@@ -92,10 +101,11 @@ def test_lut_si_units_body_axis_and_no_extrapolation():
     values = np.ones((2, 2, 2, 2, 3))
     values[1] *= 2
     values[:, 1] *= 3
-    table = MosLUT(metadata, {"NMOS": values, "PMOS": values})
-    assert table.lookup("NMOS", 1., 0., .5, .5)[0, 0] == 1
-    assert table.lookup("PMOS", 2., 1., .5, .5)[0, 0] == 6
-    assert np.isnan(table.lookup("NMOS", 3., 0., .5, .5)).all()
+    ir = parse_circuit(PROJECT / "Sample_Optimizer_Circuit/Opamp0/Opamp0.sp")
+    table = synthetic_lut(metadata, values, ir)
+    assert table.lookup("sky130_fd_pr__nfet_01v8_lvt", 1., 0., .5, .5)[0, 0] == 1
+    assert table.lookup("sky130_fd_pr__pfet_01v8_lvt", 2., 1., .5, .5)[0, 0] == 6
+    assert np.isnan(table.lookup("sky130_fd_pr__nfet_01v8_lvt", 3., 0., .5, .5)).all()
 
 
 def store(tmp_path):
@@ -254,8 +264,13 @@ def test_interrupt_during_gmid_generation_keeps_accepted_draft(tmp_path):
 
 
 @pytest.mark.parametrize("sizing_mode", ["nominal_lut", "coupled_lut"])
-def test_gmid_sizing_retains_engineering_grids(sizing_mode):
+@pytest.mark.parametrize("model_flavor", ["standard", "lvt", "mixed"])
+def test_gmid_sizing_retains_engineering_grids(sizing_mode, model_flavor):
     ir = parse_circuit(PROJECT / "Sample_Optimizer_Circuit/5t_ota/5t_ota.sp")
+    ir = replace(ir, devices=tuple(
+        replace(d, model=d.model + "_lvt") if d.model and (
+            model_flavor == "lvt" or (model_flavor == "mixed" and d.name == "XMBIAS")) else d
+        for d in ir.devices))
     names = list(ir.parameter_defaults)
     bounds = [[1e-7, 20e-6, 1e-7] if n == "IBIAS_A" else [1, 3, 1] if n == "M_FACTOR"
               else [.15, 1., .05] if n.startswith("L") else [1., 10., .1] for n in names]
@@ -272,7 +287,7 @@ def test_gmid_sizing_retains_engineering_grids(sizing_mode):
     current = 50e-6/length * np.where(vd < overdrive, overdrive*vd-.5*vd**2, .5*overdrive**2)
     gm = 50e-6/length * np.minimum(overdrive, vd)
     values = np.stack([current, gm, overdrive], axis=-1)
-    lut = MosLUT(metadata, {"NMOS": values, "PMOS": values})
+    lut = synthetic_lut(metadata, values, ir)
     sampler = GmidSampler(ir, domain, groups, targets, lut, {"VDD": 1.8, "VSS": 0, "VCM": .9}, config)
     rng = np.random.default_rng(9)
     accepted = None

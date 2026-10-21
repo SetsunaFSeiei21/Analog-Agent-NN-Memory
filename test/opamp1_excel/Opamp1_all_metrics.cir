@@ -104,8 +104,8 @@ Opamp1 - single-file nine-metric ngspice testbench
 .param DESVAR_L10=0.5
 
 .param DESVAR_M1=1
-.param DESVAR_M2=5
-.param DESVAR_M3=5
+.param DESVAR_M2=10
+.param DESVAR_M3=10
 
 .param IBIAS_A=10e-6
 
@@ -149,14 +149,14 @@ Opamp1 - single-file nine-metric ngspice testbench
 XPM12 VB1 NET4 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W4} L={DESVAR_L4} m=1
 XPM11 NET4 NET4 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W4} L={DESVAR_L4} m=1
 XPM10 NET3 VB2 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W2} L={DESVAR_L2} m=1
-XPM8 VB2 VB2 NET3 VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W2} L={DESVAR_L2} m={DESVAR_M2}
+XPM8 VB2 VB2 NET3 NET3 sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W2} L={DESVAR_L2} m={DESVAR_M2}
 
-XM10 NET2 VB2 NET27 VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M1}
-XM15 VOUT VB2 NET24 VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M1}
+XM10 NET2 VB2 NET27 NET27 sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M1}
+XM15 VOUT VB2 NET24 NET24 sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M1}
 XM9 NET27 NET2 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W8} L={DESVAR_L8} m={DESVAR_M1}
 XM5 NET24 NET2 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W8} L={DESVAR_L8} m={DESVAR_M1}
-XM16 NET11 VB2 NET25 VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M1}
-XM14 NET6 VB2 NET26 VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M1}
+XM16 NET11 VB2 NET25 NET25 sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M1}
+XM14 NET6 VB2 NET26 NET26 sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M1}
 XM8 NET26 NET6 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W8} L={DESVAR_L8} m={DESVAR_M1}
 XM6 NET25 NET6 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W8} L={DESVAR_L8} m={DESVAR_M1}
 

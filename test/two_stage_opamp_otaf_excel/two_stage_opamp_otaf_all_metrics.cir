@@ -78,8 +78,8 @@ two_stage_opamp_otaf - single-file nine-metric ngspice testbench
 .param LLOAD=0.35
 .param W2P=10
 .param L2P=0.35
-.param M1_FACTOR=50
-.param M2_FACTOR=50
+.param M1_FACTOR=1
+.param M2_FACTOR=10
 .param RNULL_OHM=10000
 .param CCOMP_F=1e-12
 

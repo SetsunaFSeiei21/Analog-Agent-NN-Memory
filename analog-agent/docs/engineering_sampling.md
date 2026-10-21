@@ -25,7 +25,7 @@ python -m src.sample_optimize.sample_only \
 ```
 
 先将六份仿真条件 JSON 的 `PDK_PATH` 改成本机文件。完整模式核对六份条件的
-PDK、corner、温度、VDD、VSS 和 VCM 一致；默认 TT、27°C、1.8 V、VCM=0.9 V。
+PDK、corner、温度、VDD、VSS 和 VCM 一致；默认 TT、27°C、1.8 V、VCM=0.72 V。
 ACDC reference 的功耗条件为25°C，若使用它，应将所有测试平台温度统一。
 首次运行复制源电路，不移动或改写源文件；实际设计值仅写入独立仿真 workspace。
 
@@ -37,6 +37,9 @@ ACDC reference 的功耗条件为25°C，若使用它，应将所有测试平台
 五方法共用 `parameter_ranges.json` 解析后的离散 W/L/M/R/C/I 范围。
 `circuit_parameter_overrides` 仍是可选、可部分覆盖，其余参数回退到通用范围。
 `device_control_ranges` 不改变 Controller 的通用范围回退规则。
+全局 `L=[0.35,1.0,0.01]`（µm）；NMOS 和 PMOS 都使用这个统一范围，
+为后续切换到 1.8 V LVT 器件保留 PMOS 所需的长度下限。NMOS.L / PMOS.L 配置同步。
+W、M、R、C、I 范围及已有电路覆盖保持原定义；自定义长度覆盖仍需适合所选模型。
 Sobol 按2的幂生成块，再投影、截取和去重；最终集合不宣称保持完整 Sobol 平衡性质。
 LHS 的分层性质同样会受到离散投影和去重影响。
 
@@ -66,15 +69,17 @@ LHS 的分层性质同样会受到离散投影和去重影响。
 | 5t_ota | WBIAS, WIN, WLOAD | — |
 | two_stage_opamp_otaf | WBIAS, WIN, WLOAD, W2P | — |
 | two_stage_folded_opamp | WPBIAS, WNBIAS, WPCAS_BIAS, WNCAS_BIAS, WIN, WPFOLD, WPCAS, WNCAS, W2P | XMP_PCAS_SOURCE, XMN_NCAS_SOURCE |
-| Opamp0 | DESVAR_W1 … DESVAR_W9 | XNM6 |
+| Opamp0 | DESVAR_W1 … DESVAR_W7 | XNM6 |
 | Opamp1 | DESVAR_W1, W2, W4, W5, W6, W7, W8, W9, W10（均含DESVAR_前缀） | XPM10, XNM10 |
 
-Opamp0 使用 25 个设计参数：`DESVAR_W1..W9`、`DESVAR_L1..L9`、
-`DESVAR_M1..M6` 和 `IBIAS_A`。`XNM6`、`XNM5` 分别使用 W3/L3、W8/L8，
-尾管 `XPM6` 独立使用 W9/L9；六个 M 依次控制尾管、输入对、上部 PMOS 镜像、
-PMOS 级联管、NMOS 电流汇和 NMOS 级联管。配套参数文件只提供示例初值，
-采样边界仍由 `parameter_ranges.json` 解析。更换网表后需使用新的输出目录，
-不能把旧 16 参数历史数据库作为新网表的续跑数据。
+Opamp0 使用 18 个设计参数：`DESVAR_W1..W7`、`DESVAR_L1..L7`、
+`DESVAR_M0/M1/M2` 和 `IBIAS_A`。当前网表的 17 只 MOS 都是 LVT。
+`XNM5/6` 共享 W3/L3；`XPM6/7/8/9` 共享 W1/L1。
+M0 控制 XNM5；M1 控制输入对 XPM4/5，XPM6 使用 2*M1；
+M2 控制 XPM0–3 和 XNM0/1，XNM2/3 使用 M1+M2。
+所有 PMOS 的 bulk 接各自 source，NMOS bulk 接 VSS；工作点计算直接读取实际引脚。
+配套参数文件只提供示例初值，采样边界仍由 `parameter_ranges.json` 解析。
+更换网表、参数或 VCM 后应使用新的输出目录，不能续用旧条件的历史标签。
 
 参考组 L、M 和无源器件先从相同的物理网格取样。根据参考组 LUT 电流密度与 W 范围，
 从原 IBIAS_A 网格中选择相容电流；其余组再从原 L 网格中选择与初始尺寸约束相容的长度。
@@ -86,8 +91,7 @@ PMOS 级联管、NMOS 电流汇和 NMOS 级联管。配套参数文件只提供�
 再将参考支路名义电流密度转换为共享 W；参考管采用 `ID/M=IBIAS_A` 的提案初值，
 尾管、折叠支路和第二级的电流倍乘仍由原网表表达式保留。
 实际支路电流偏离名义值时，由后续真实 OP 标注，不因预测的偏置失效而丢掉样本。
-Opamp0 的 W9/L9 和六个 M 独立后，`ID/M=IBIAS_A` 仅是尺寸提案假设，
-不表示这些支路的实际电流相同或 gm/ID 目标已经达成。
+`ID/M=IBIAS_A` 仅是尺寸提案假设，不表示实际支路电流相同或 gm/ID 目标已经达成。
 可选 `sizing_mode="coupled_lut"` 进一步联合求解节点 KCL 和参考 gm/ID，
 共享 W 作为未知量；此模式仅接受残差达标的解，复杂拓扑的拒绝率和解算时间可能较高。
 共享 W/L/M 绑定保持不变。计算出的 W 越界会拒绝提案，不截断到边界；
@@ -101,15 +105,18 @@ Opamp0 的 W9/L9 和六个 M 独立后，`ID/M=IBIAS_A` 仅是尺寸提案假设
 首次使用自动构建 LUT，缓存于数据库根目录的 `.lut_cache`；可通过 `--lut_cache_path`
 指定公共缓存。轴为 L、反向体偏置、|VGS|、|VDS|，其中 L 内部用米，电流密度用 A/m；
 电路文件 W/L 仍用微米，显式使用 `scale=1u`。PMOS 的电源极性在生成测试平台时转换。
-长度轴覆盖物理范围两端，默认最多12个合法长度，通过插值覆盖中间长度；
+每个实际模型型号独立建表并使用该型号关联的 L 范围，普通管和 LVT 的数据不混用，
+也不把 NMOS 的短沟道范围带入 PMOS 表。长度轴覆盖各模型范围两端，
+每个模型默认最多12个长度，通过插值覆盖中间长度；
 `max_lengths` 可提高至整个长度网格的点数。电压轴用 `[最小值,最大值,步进]`。
 禁止越界外推。每个部分构建切片可恢复，完整缓存使用原子写入和构建锁。
-首次建表也使用 `--n_workers`：每个独立的器件类型/长度/体偏置切片在独立 workspace
+首次建表也使用 `--n_workers`：每个独立的模型型号/长度/体偏置切片在独立 workspace
 中执行，最多同时启动该数量的 ngspice 进程。已有完整或部分缓存仍可复用；worker 数
-不进入 LUT 缓存键。默认最多168个切片，缓存命中时不会再次进行这些仿真。
+不进入 LUT 缓存键。仅含一类 NMOS 和一类 PMOS 时默认最多168个切片；混合更多型号会相应增加。缓存命中时不再仿真。
 
 缓存匹配模型及递归 include 内容、corner、温度、ngspice 版本、初始化、轴和参考宽度。
-内部 MOS 名称从 PDK 文件解析，兼容原始 Sky130 与 open_pdks。
+工作点与 LUT 均按网表实际型号从 PDK 解析内部 MOS 名称，兼容原始 Sky130 与 open_pdks。
+LUT 缓存使用 schema v2，并将实际型号及各自长度轴纳入键；旧版普通管缓存不会误复用。
 LUT 假设电流随 W 成比例，仅作为候选生成近似；**实际 ngspice OP 才决定可行性**。
 参考：[medwatt/gmid](https://github.com/medwatt/gmid)，审阅版本
 `6c4c5e164295c60a8b996f9dff8a79c64456ddaf`。本实现借鉴其多维 LUT 和 ID/W 尺寸映射，

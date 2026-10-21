@@ -24,47 +24,70 @@ class MosLUT:
     """
     def __init__(self, metadata, arrays):
         self.metadata = metadata
-        self.axes = [np.asarray(metadata[k]) for k in ("length_m", "reverse_body_bias_v", "vgs_v", "vds_v")]
-        self.functions = {kind: RegularGridInterpolator(self.axes, arrays[kind], bounds_error=False,
-                                                       fill_value=np.nan) for kind in ("NMOS", "PMOS")}
+        self.vgs_axis = np.asarray(metadata["vgs_v"])
+        voltage_axes = [np.asarray(metadata[k]) for k in ("reverse_body_bias_v", "vgs_v", "vds_v")]
+        self.axes = {model: [np.asarray(spec["length_m"]), *voltage_axes]
+                     for model, spec in metadata["model_tables"].items()}
+        self.functions = {model: RegularGridInterpolator(axes, arrays[model], bounds_error=False,
+                                                        fill_value=np.nan) for model, axes in self.axes.items()}
 
-    def lookup(self, kind, length_um, body, vgs, vds):
+    def lookup(self, model, length_um, body, vgs, vds):
+        model = model.lower()
         coordinates = np.broadcast_arrays(np.atleast_1d(length_um)*1e-6, body, vgs, vds)
         shape = coordinates[0].shape
         point = np.stack(coordinates, axis=-1).reshape(-1, 4)
-        for i, axis in enumerate(self.axes):
+        for i, axis in enumerate(self.axes[model]):
             # Correct floating-point endpoint noise only, never extrapolate bias.
             close = (point[:, i] >= axis[0]-1e-12) & (point[:, i] <= axis[-1]+1e-12)
             point[close, i] = np.clip(point[close, i], axis[0], axis[-1])
-        return self.functions[kind](point).reshape(*shape, 3)
+        return self.functions[model](point).reshape(*shape, 3)
 
     @classmethod
-    def ensure(cls, cache, context, domain, groups, config, command, timeout, database, run_id, logger, *, workers=1):
+    def ensure(cls, cache, context, domain, groups, config, command, timeout, database, run_id, logger, *, circuit, workers=1):
         if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
             raise ValueError("LUT workers must be a positive integer")
         Path(cache).mkdir(parents=True, exist_ok=True)
         with (Path(cache) / ".build.lock").open("a") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            return cls._build(cache, context, domain, groups, config, command, timeout, database, run_id, logger, workers=workers)
+            return cls._build(cache, context, domain, groups, config, command, timeout, database, run_id, logger,
+                              circuit=circuit, workers=workers)
 
     @classmethod
-    def _build(cls, cache, context, domain, groups, config, command, timeout, database, run_id, logger, *, workers=1):
+    def _build(cls, cache, context, domain, groups, config, command, timeout, database, run_id, logger, *, circuit, workers=1):
         started = perf_counter()
         cache = Path(cache)
         cache.mkdir(parents=True, exist_ok=True)
-        lengths = sorted({float(v) for g in groups for v in domain.axes[domain.names.index(g.length)]})
+        # The netlist is the authority for both model flavor and its L domain.
+        # Combining all NMOS/PMOS lengths can request nonexistent PMOS LVT bins.
+        devices = {d.name.upper(): d for d in circuit.devices}
+        model_tables, model_lengths = {}, {}
+        for group in groups:
+            for member in group.members:
+                device = devices[member]
+                model = device.model.lower()
+                spec = {"device_type": device.device_type.value,
+                        "subcircuit": device.name.lower().startswith("x")}
+                if model in model_tables and model_tables[model] != spec:
+                    raise ValueError(f"Inconsistent MOS model usage: {model}")
+                model_tables[model] = spec
+                model_lengths.setdefault(model, set()).update(
+                    float(v) for v in domain.axes[domain.names.index(group.length)])
         limit = config["max_lengths"]
-        if len(lengths) > limit:
-            lengths = [lengths[i] for i in np.unique(np.rint(np.linspace(0, len(lengths)-1, limit)).astype(int))]
+        model_tables = dict(sorted(model_tables.items()))
+        for model, spec in model_tables.items():
+            lengths = sorted(model_lengths[model])
+            if len(lengths) > limit:
+                lengths = [lengths[i] for i in np.unique(np.rint(np.linspace(0, len(lengths)-1, limit)).astype(int))]
+            spec["length_m"] = (np.asarray(lengths) * 1e-6).tolist()
         condition = context["conditions"]["power"]
-        metadata = {"schema_version": 1, "implementation": "sky130-grid-v1",
+        metadata = {"schema_version": 2, "implementation": "sky130-model-grid-v2",
                     "models": context["models"], "ngspice_version": context["ngspice_version"],
                     "corner": condition["CORNER"], "temperature_c": condition["TEMP"],
                     "source_initialization": context["initialization"],
                     "global_initialization": context["global_initialization"],
                     "spice_scripts": context["spice_scripts"],
                     "mos_primitives": context["mos_primitives"],
-                    "length_m": (np.asarray(lengths) * 1e-6).tolist(),
+                    "model_tables": model_tables,
                     "reverse_body_bias_v": grid(config["reverse_body_bias"]).tolist(),
                     "vgs_v": grid(config["vgs"]).tolist(), "vds_v": grid(config["vds"]).tolist(),
                     "reference_width_m": config["reference_width_um"] * 1e-6,
@@ -79,36 +102,37 @@ class MosLUT:
                 if json.loads(str(saved["metadata"])) != metadata:
                     raise ValueError("LUT cache metadata mismatch")
                 logger.info("Reuse gm/ID LUT: %s", path)
-                return cls(metadata, {kind: saved[kind] for kind in ("NMOS", "PMOS")}), key
-        shape = tuple(len(metadata[k]) for k in ("length_m", "reverse_body_bias_v", "vgs_v", "vds_v")) + (3,)
-        arrays = {kind: np.empty(shape) for kind in ("NMOS", "PMOS")}
+                return cls(metadata, {model: saved[model] for model in model_tables}), key
+        bias_shape = tuple(len(metadata[k]) for k in ("reverse_body_bias_v", "vgs_v", "vds_v")) + (3,)
+        arrays = {model: np.empty((len(spec["length_m"]), *bias_shape)) for model, spec in model_tables.items()}
         # A partial build is reusable only when every saved slice is keyed to this metadata.
         slices = cache / f".build-{key}"
         slices.mkdir(exist_ok=True)
         pending = []
         reused = 0
-        for kind in arrays:
-            for li, length in enumerate(lengths):
+        for model, spec in model_tables.items():
+            for li, length_m in enumerate(spec["length_m"]):
                 for bi, body in enumerate(metadata["reverse_body_bias_v"]):
-                    slice_path = slices / f"{kind}-{li}-{bi}.npy"
+                    slice_path = slices / f"{model}-{li}-{bi}.npy"
                     if slice_path.exists():
                         values = np.load(slice_path, allow_pickle=False)
-                        if values.shape != shape[2:] or not np.isfinite(values).all():
+                        if values.shape != bias_shape[1:] or not np.isfinite(values).all():
                             raise ValueError("Invalid partial LUT slice")
-                        arrays[kind][li, bi] = values
+                        arrays[model][li, bi] = values
                         reused += 1
                     else:
-                        pending.append((kind, li, bi, length, body, slice_path))
+                        pending.append((model, li, bi, length_m * 1e6, body, slice_path))
         effective_workers = min(workers, len(pending))
-        logger.info("Build gm/ID LUT: pending=%d, reused=%d, workers=%d, lengths=%d, body biases=%d",
-                    len(pending), reused, effective_workers, len(lengths), len(metadata["reverse_body_bias_v"]))
+        logger.info("Build gm/ID LUT: pending=%d, reused=%d, workers=%d, models=%d, body biases=%d",
+                    len(pending), reused, effective_workers, len(model_tables), len(metadata["reverse_body_bias_v"]))
 
         def characterize(task):
-            kind, li, bi, length, body, slice_path = task
+            model, li, bi, length, body, slice_path = task
             slice_started = perf_counter()
-            sign = 1 if kind == "NMOS" else -1
-            model = "sky130_fd_pr__nfet_01v8" if sign == 1 else "sky130_fd_pr__pfet_01v8"
-            symbol = "m.xref." + context["mos_primitives"][model]
+            spec = model_tables[model]
+            sign = 1 if spec["device_type"] == "NMOS" else -1
+            instance = "XREF" if spec["subcircuit"] else "MREF"
+            symbol = "m.xref." + context["mos_primitives"][model] if spec["subcircuit"] else "mref"
             with tempfile.TemporaryDirectory(prefix="lut_", dir=cache) as tmp:
                 directory = Path(tmp)
                 if context["initialization"]:
@@ -118,7 +142,7 @@ class MosLUT:
 .lib "{condition['PDK_PATH']}" {condition['CORNER']}
 .option scale=1u
 .temp {condition['TEMP']}
-XREF D G 0 B {model} W={config['reference_width_um']} L={length} m=1
+{instance} D G 0 B {model} W={config['reference_width_um']} L={length:.15g} m=1
 VG G 0 0
 VD D 0 0
 VB B 0 {-sign * body}
@@ -139,22 +163,22 @@ quit
                 def launch():
                     return subprocess.run([command, "-b", "-o", "lut.log", "lut.cir"], cwd=directory,
                                           capture_output=True, text=True, timeout=timeout)
-                process = record_invocation(database, run_id, key, "lut", f"{kind}:{li}:{bi}", launch)
+                process = record_invocation(database, run_id, key, "lut", f"{model}:{li}:{bi}", launch)
                 table = directory / "table.txt"
                 if process.returncode != 0 or not table.exists():
                     log = directory / "lut.log"
                     detail = log.read_text(errors="replace") if log.exists() else process.stderr or process.stdout
-                    raise RuntimeError(f"LUT characterization failed ({kind}:{li}:{bi}): {detail[-3000:]}")
+                    raise RuntimeError(f"LUT characterization failed ({model}:{li}:{bi}): {detail[-3000:]}")
                 raw = np.loadtxt(table, ndmin=2)
-                if raw.shape != (shape[2] * shape[3], 4) or not np.isfinite(raw).all():
+                if raw.shape != (bias_shape[1] * bias_shape[2], 4) or not np.isfinite(raw).all():
                     raise RuntimeError(f"Unexpected LUT shape/data: {raw.shape}")
-                values = raw[:, 1:].reshape(shape[2:])
+                values = raw[:, 1:].reshape(bias_shape[1:])
                 values[..., :2] /= metadata["reference_width_m"]
             temporary = slice_path.with_suffix(".tmp.npy")
             np.save(temporary, values, allow_pickle=False)
             os.replace(temporary, slice_path)
-            logger.debug("LUT slice timing: %s:%d:%d elapsed=%.3fs", kind, li, bi, perf_counter()-slice_started)
-            return kind, li, bi, values
+            logger.debug("LUT slice timing: %s:%d:%d elapsed=%.3fs", model, li, bi, perf_counter()-slice_started)
+            return model, li, bi, values
 
         if pending:
             # Threads only orchestrate independent ngspice processes. Each slice has
@@ -163,8 +187,8 @@ quit
                 futures = [executor.submit(characterize, task) for task in pending]
                 try:
                     for done, future in enumerate(as_completed(futures), 1):
-                        kind, li, bi, values = future.result()
-                        arrays[kind][li, bi] = values
+                        model, li, bi, values = future.result()
+                        arrays[model][li, bi] = values
                         if done % effective_workers == 0 or done == len(pending):
                             logger.info("LUT progress: %d/%d new slices, elapsed=%.3fs", done, len(pending), perf_counter()-started)
                 except BaseException:

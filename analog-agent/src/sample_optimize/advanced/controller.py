@@ -188,7 +188,7 @@ class DatasetSamplingController(Sampling_Controller):
                     lut, lut_key = MosLUT.ensure(self.lut_cache_path, self.context, self.domain, self.groups,
                         self.sampling_config["gmid"]["lut"], self.simulator.ngspice_command,
                         self.simulator.timeout_seconds, str(self.history_store.database_path), run_id, self.logger,
-                        workers=n_workers)
+                        circuit=self.ir, workers=n_workers)
                 gmid = GmidSampler(self.ir, self.domain, self.groups, self.gmid_targets, lut,
                                   self.context["conditions"]["power"], self.sampling_config["gmid"])
                 state["lut_key"] = lut_key

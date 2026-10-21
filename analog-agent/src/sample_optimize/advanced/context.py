@@ -9,6 +9,8 @@ import os
 from contextlib import closing
 from pathlib import Path
 
+from ...circuit_ir import parse_circuit
+from ...circuit_ir.schema import DeviceType
 from ..operating_point_contract import OP_SCHEMA_VERSION
 
 # Version 1's verified collector. Its bias deck and feasibility definitions
@@ -69,7 +71,7 @@ def model_identity(paths):
 
 def resolve_mos_primitives(models, required_models=("sky130_fd_pr__nfet_01v8", "sky130_fd_pr__pfet_01v8")):
     primitives = {}
-    required = set(required_models)
+    required = {model.lower() for model in required_models}
     for file in models:
         content = Path(file).read_text(errors="replace")
         for model in required:
@@ -82,7 +84,8 @@ def resolve_mos_primitives(models, required_models=("sky130_fd_pr__nfet_01v8", "
                         raise ValueError(f"Ambiguous primitive instance for {model}")
                     primitives[model] = found
     if set(primitives) != required:
-        raise ValueError("Cannot resolve Sky130 MOS primitive names from the PDK include closure")
+        missing = ", ".join(sorted(required - primitives.keys()))
+        raise ValueError(f"Cannot resolve Sky130 MOS primitive names from the PDK include closure: {missing}")
     return primitives
 
 
@@ -106,7 +109,10 @@ def simulation_context(source, name, simulator):
     if os.environ.get("SPICE_SCRIPTS"):
         initialization_files.append(Path(os.environ["SPICE_SCRIPTS"]) / "spinit")
     global_initialization = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in initialization_files if p.is_file()}
-    primitives = resolve_mos_primitives(models)
+    circuit = parse_circuit(Path(source) / f"{name}.sp")
+    wrappers = {d.model.lower() for d in circuit.devices
+                if d.device_type in (DeviceType.NMOS, DeviceType.PMOS) and d.name.lower().startswith("x")}
+    primitives = resolve_mos_primitives(models, wrappers)
     return {"schema_version": 1, "source": source_identity(source, name), "templates": templates,
             "initialization": (Path(source) / ".spiceinit").read_text() if (Path(source) / ".spiceinit").exists() else "",
             "global_initialization": global_initialization,

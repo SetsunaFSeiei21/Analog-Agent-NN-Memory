@@ -24,9 +24,11 @@ from src.sample_optimize.advanced.profiles import make_profile
 from src.sample_optimize.history_store import SamplingHistoryStore
 from src.sample_optimize.simulating import Simulator
 from src.utils.spice_parser import read_parameter_names
-from test_advanced_sampling import bare_controller, store
+from test_advanced_sampling import bare_controller, store, synthetic_lut
 
 PROJECT = Path(__file__).resolve().parents[1]
+NMOS = "sky130_fd_pr__nfet_01v8"
+PMOS = "sky130_fd_pr__pfet_01v8"
 
 
 class Characterizer:
@@ -67,40 +69,43 @@ def lut_inputs(tmp_path):
                "spice_scripts": None,
                "mos_primitives": {"sky130_fd_pr__nfet_01v8": "m0", "sky130_fd_pr__pfet_01v8": "m0"}}
     domain = DesignDomain(["L"], [[.2, .4, .2]])
-    args = (context, domain, [SimpleNamespace(length="L")], config, "unused", 1,
+    circuit = SimpleNamespace(devices=[
+        SimpleNamespace(name="XN", model=NMOS, device_type=SimpleNamespace(value="NMOS")),
+        SimpleNamespace(name="XP", model=PMOS, device_type=SimpleNamespace(value="PMOS"))])
+    args = (context, domain, [SimpleNamespace(length="L", members=("XN", "XP"))], config, "unused", 1,
             str(history.database_path), run, logging.getLogger("test-lut"))
-    return history, run, args
+    return history, run, args, circuit
 
 
 def test_parallel_lut_same_values_cache_and_budget(tmp_path):
-    history, run, args = lut_inputs(tmp_path)
+    history, run, args, circuit = lut_inputs(tmp_path)
     oracle = Characterizer()
     with patch("src.sample_optimize.advanced.lut.subprocess.run", oracle):
-        serial, serial_key = MosLUT.ensure(tmp_path / "serial", *args, workers=1)
+        serial, serial_key = MosLUT.ensure(tmp_path / "serial", *args, circuit=circuit, workers=1)
         assert oracle.peak == 1
-        parallel, key = MosLUT.ensure(tmp_path / "parallel", *args, workers=3)
+        parallel, key = MosLUT.ensure(tmp_path / "parallel", *args, circuit=circuit, workers=3)
     assert 2 <= oracle.peak <= 3
     assert oracle.calls == 16  # Both cold builds have eight slices.
     assert serial_key == key and serial.metadata == parallel.metadata
-    for kind in ("NMOS", "PMOS"):
+    for kind in (NMOS, PMOS):
         assert np.array_equal(serial.functions[kind].values, parallel.functions[kind].values)
-    assert parallel.lookup("NMOS", .2, 0, 0, 0)[0, 0] == pytest.approx(1.002e-6/10e-6)
+    assert parallel.lookup(NMOS, .2, 0, 0, 0)[0, 0] == pytest.approx(1.002e-6/10e-6)
     with patch("src.sample_optimize.advanced.lut.subprocess.run", side_effect=AssertionError("cache hit launched SPICE")):
-        cached, cached_key = MosLUT.ensure(tmp_path / "parallel", *args, workers=8)
+        cached, cached_key = MosLUT.ensure(tmp_path / "parallel", *args, circuit=circuit, workers=8)
     assert key == cached_key
-    assert np.array_equal(cached.functions["PMOS"].values, parallel.functions["PMOS"].values)
+    assert np.array_equal(cached.functions[PMOS].values, parallel.functions[PMOS].values)
     with history._connect() as con:
         assert [tuple(r) for r in con.execute("SELECT category,status,COUNT(*) FROM spice_invocations WHERE run_id=? GROUP BY category,status", (run,))] == [("lut", "finished", 16)]
 
 
 def test_parallel_lut_failure_resumes_only_missing_slices(tmp_path):
-    history, run, args = lut_inputs(tmp_path)
+    history, run, args, circuit = lut_inputs(tmp_path)
     oracle = Characterizer()
     oracle.fail = True
     cache = tmp_path / "cache"
     with patch("src.sample_optimize.advanced.lut.subprocess.run", oracle):
         with pytest.raises(subprocess.TimeoutExpired):
-            MosLUT.ensure(cache, *args, workers=3)
+            MosLUT.ensure(cache, *args, circuit=circuit, workers=3)
         assert not list(cache.glob("*.npz"))  # No incomplete final table.
         saved = list(cache.glob(".build-*/*.npy"))
         with history._connect() as con:
@@ -109,10 +114,10 @@ def test_parallel_lut_failure_resumes_only_missing_slices(tmp_path):
         assert statuses["finished"] == len(saved)
         before = oracle.calls
         oracle.fail = False
-        table, _ = MosLUT.ensure(cache, *args, workers=3)
+        table, _ = MosLUT.ensure(cache, *args, circuit=circuit, workers=3)
     assert oracle.calls-before == 8-len(saved)
     assert oracle.calls == 9  # Eight successful slices plus the failed launch.
-    assert np.isfinite(table.functions["NMOS"].values).all()
+    assert np.isfinite(table.functions[NMOS].values).all()
 
 
 def test_incremental_history_never_rereads_labels_or_keeps_draft_keys(tmp_path):
@@ -158,16 +163,16 @@ def test_gmid_curve_cache_preserves_points_rejections_and_rng(mode, conditioned)
     current = 50e-6/length*np.where(vd < overdrive, overdrive*vd-.5*vd**2, .5*overdrive**2)
     gm = 50e-6/length*np.minimum(overdrive, vd)
     values = np.stack([current, gm, overdrive], axis=-1)
-    lut = MosLUT(metadata, {"NMOS": values, "PMOS": values})
+    lut = synthetic_lut(metadata, values, ir)
 
     class UncachedSampler(GmidSampler):
         def _initial_curve(self, kind, length, diode, supply):
-            vg = self.lut.axes[2]
+            vg = self.lut.vgs_axis
             values = self.lut.lookup(kind, length, 0., vg, vg if diode else min(.9, supply))
             return values, values[:, 1]/np.maximum(values[:, 0], 1e-30)
         def _length_table(self, kind, parameter, supply):
             axis = self.domain.axes[self.domain.names.index(parameter)]
-            vg = self.lut.axes[2]
+            vg = self.lut.vgs_axis
             values = self.lut.lookup(kind, axis[:, None], 0., vg[None, :], min(.9, supply))
             return values, values[..., 1]/np.maximum(values[..., 0], 1e-30)
 

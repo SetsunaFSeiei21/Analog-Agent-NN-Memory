@@ -1,7 +1,7 @@
 {
     "control_parameter_ranges": {
         "W": [0.5, 10.0, 0.01],
-        "L": [0.15, 1.0, 0.01],
+        "L": [0.35, 1.0, 0.01],
         "M": [1, 50, 1],
         "R": [100.0, 100000.0, 100.0],
         "C": [1e-15, 5e-12, 1e-15],
@@ -9,10 +9,10 @@
     },
     "device_control_ranges": {
         "NMOS.W": [0.5, 10.0, 0.01],
-        "NMOS.L": [0.15, 1.0, 0.01],
+        "NMOS.L": [0.35, 1.0, 0.01],
         "NMOS.M": [1, 50, 1],
         "PMOS.W": [0.5, 10.0, 0.01],
-        "PMOS.L": [0.15, 1.0, 0.01],
+        "PMOS.L": [0.35, 1.0, 0.01],
         "PMOS.M": [1, 50, 1],
         "RESISTOR.R": [100.0, 100000.0, 100.0],
         "CAPACITOR.C": [1e-15, 5e-12, 1e-15],
@@ -20,18 +20,17 @@
     },
     "circuit_parameter_overrides": {
         "two_stage_opamp_otaf": {
-            "M2_FACTOR": [1, 10, 1]
         },
         "two_stage_folded_opamp": {
-            "M2_FACTOR": [1, 10, 1]
+            "M3_FACTOR": [1, 10, 1],
+            "M4_FACTOR": [1, 10, 1]
         },
         "Opamp0": {
-            "DESVAR_M0": [1, 10, 1],
-            "DESVAR_W6": [6,10,0.01]
+            "DESVAR_M0": [1, 10, 1]
         },
-        "Opamp1":{
-            "DESVAR_M2": [1, 10, 1],
-            "DESVAR_M3": [1, 10, 1]
+        "Opamp1": {
+            "DESVAR_M2": [1,10,1],
+            "DESVAR_M3": [1,10,1]
         }
     }
 }

@@ -23,5 +23,7 @@
 .param L2P=0.5
 .param M1_FACTOR=1
 .param M2_FACTOR=1
+.param M3_FACTOR=1
+.param M4_FACTOR=1
 .param RNULL_OHM=10000
 .param CCOMP_F=1e-12

@@ -36,25 +36,32 @@ def test_resolved_device_parameters_follow_design_override() -> None:
     assert all(params["W"] == 33.0 and params["M"] == 3 for params in input_devices)
 
 
-def test_opamp0_independent_sizing_preserves_matched_pairs() -> None:
+def test_opamp0_shared_sizing_and_multiplicity_expressions() -> None:
     circuit = parse_circuit(ROOT / "Opamp0" / "Opamp0.sp")
-    assert len(circuit.parameter_defaults) == 25
+    assert len(circuit.parameter_defaults) == 18
     design = {"DESVAR_W3": 6.0, "DESVAR_L3": 0.6,
-              "DESVAR_W8": 7.0, "DESVAR_L8": 0.7,
-              "DESVAR_W9": 8.0, "DESVAR_L9": 0.8}
-    design.update({f"DESVAR_M{i}": i + 2 for i in range(1, 7)})
+              "DESVAR_W1": 8.0, "DESVAR_L1": 0.8,
+              "DESVAR_M0": 3, "DESVAR_M1": 4, "DESVAR_M2": 5}
     graph = build_pin_graph(circuit, design)
     parameters = {d.name: graph.device_parameters[i] for i, d in enumerate(circuit.devices)}
-    for device, group in [("XNM6", 3), ("XNM5", 8), ("XPM6", 9)]:
+    for device, group in [("XNM6", 3), ("XNM5", 3), ("XPM6", 1), ("XPM7", 1), ("XPM8", 1), ("XPM9", 1)]:
         assert parameters[device]["W"] == design[f"DESVAR_W{group}"]
         assert parameters[device]["L"] == design[f"DESVAR_L{group}"]
-    m_groups = [("XPM6",), ("XPM4", "XPM5"), ("XPM2", "XPM3"),
-                ("XPM0", "XPM1"), ("XNM2", "XNM3"), ("XNM0", "XNM1")]
-    for index, members in enumerate(m_groups, 1):
-        assert all(parameters[d]["M"] == design[f"DESVAR_M{index}"] for d in members)
+    assert parameters["XNM5"]["M"] == 3
+    assert parameters["XPM6"]["M"] == 8
+    for members, multiple in [(("XPM4", "XPM5"), 4), (("XPM2", "XPM3"), 5),
+                              (("XPM0", "XPM1"), 5), (("XNM2", "XNM3"), 9), (("XNM0", "XNM1"), 5)]:
+        assert all(parameters[d]["M"] == multiple for d in members)
         assert all(parameters[d] == parameters[members[0]] for d in members)
-    for bias_device in ("XPM7", "XPM8", "XPM9", "XNM4", "XNM5", "XNM6"):
+    for bias_device in ("XPM7", "XPM8", "XPM9", "XNM4", "XNM6"):
         assert parameters[bias_device]["M"] == 1
+    for device in circuit.devices:
+        if device.model:
+            assert device.model.endswith("_01v8_lvt")
+            if device.name.startswith("XPM"):
+                assert device.pins[3] == device.pins[2]
+            else:
+                assert device.pins[3] == "VSS"
 
 
 def test_topology_hash_ignores_instance_and_internal_net_names(tmp_path: Path) -> None:

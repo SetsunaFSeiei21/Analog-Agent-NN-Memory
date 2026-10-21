@@ -390,7 +390,7 @@ class ControllerIntegrationTest(unittest.TestCase):
                 self.assertEqual(controller.parameter_name_lst[0], "IBIAS_A")
                 self.assertEqual(controller.parameter_spec_lst[0].device_type, "CURRENT_SOURCE")
                 self.assertEqual(controller.parameter_spec_lst[0].control_parameter, "I")
-                self.assertEqual(controller.bounds[0], (1e-7, 20e-6, 1e-7))
+                self.assertEqual(controller.bounds[0], (5e-7, 5e-6, 5e-7))
                 m_index = controller.parameter_name_lst.index("M_FACTOR")
                 self.assertEqual(controller.parameter_spec_lst[m_index].device_type, "MOS")
                 self.assertEqual(controller.parameter_spec_lst[m_index].control_parameter, "M")
@@ -403,7 +403,7 @@ class ControllerIntegrationTest(unittest.TestCase):
                     self.assertEqual(rows[0][0], "IBIAS_A")
                     bias_values = [float(row[0]) for row in rows[1:]]
                     self.assertEqual(len(bias_values), 6)
-                    self.assertTrue(all(1e-7 <= value <= 20e-6 for value in bias_values))
+                    self.assertTrue(all(5e-7 <= value <= 5e-6 for value in bias_values))
 
                 workspaces = list((result.target_path / ".workspaces").glob("run_*/workspace_*"))
                 self.assertEqual(len(workspaces), 2)
