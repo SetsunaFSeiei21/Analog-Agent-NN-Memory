@@ -27,6 +27,36 @@ class GmidSampler:
         self._initial_curves = {}
         self._length_tables = {}
 
+    def _is_bias_reference(self, device):
+        """An isolated diode branch carries IBIAS even with a floating source.
+
+        Ignore gate/capacitor connections, but reject another DC conduction
+        path at the drain. The zero-body diode LUT also requires B=S.
+        """
+        drain, gate, source, bulk = (p.upper() for p in device.pins)
+        if drain != gate or source != bulk or drain in {"VDD", "VSS", "0", "VINP", "VINN", "VOUT"}:
+            return False
+        feeds = []
+        for other in self.circuit.devices:
+            if other.name.upper() == device.name.upper():
+                continue
+            pins = tuple(p.upper() for p in other.pins)
+            if other.device_type == DeviceType.CURRENT_SOURCE and drain in pins:
+                feeds.append(other)
+            elif other.device_type in (DeviceType.NMOS, DeviceType.PMOS):
+                if drain in (pins[0], pins[2]):
+                    return False
+            elif other.device_type == DeviceType.RESISTOR and drain in pins:
+                return False
+        if len(feeds) != 1:
+            return False
+        feed = feeds[0]
+        if feed.parameters["I"].text.strip("{}'\" ").upper() != "IBIAS_A":
+            return False
+        # Positive IBIAS flows into an NMOS diode or out of a PMOS diode.
+        terminal = 1 if device.device_type == DeviceType.NMOS else 0
+        return feed.pins[terminal].upper() == drain
+
     def _initial_curve(self, model, length, diode, supply):
         key = (model, float(length), diode, min(.9, supply))
         if key not in self._initial_curves:
@@ -71,16 +101,10 @@ class GmidSampler:
             reference_device = self.mos[reference]
             model = reference_device.model.lower()
             vg = self.lut.vgs_axis
-            direct_diode = (reference_device.pins[0] == reference_device.pins[1] and
-                            reference_device.pins[2].upper() in {"VDD", "VSS"} and
-                            reference_device.pins[2] == reference_device.pins[3])
-            bias_net = reference_device.pins[0].upper()
             # Only an isolated reference diode carrying the ideal IBIAS can be
             # rejected cheaply using its exact LUT current. Other branch ratios
             # remain unknowns of the coupled KCL solve.
-            bias_reference = direct_diode and any(
-                d.device_type == DeviceType.CURRENT_SOURCE and bias_net in {p.upper() for p in d.pins}
-                for d in self.circuit.devices)
+            bias_reference = self._is_bias_reference(reference_device)
             values, ratio = self._initial_curve(model, length[reference], bias_reference, supply)
             roots = []
             target = chosen[group.width]
@@ -98,16 +122,19 @@ class GmidSampler:
         # interval because their actual VDS/VBS comes from the coupled solve.
         lower_current, upper_current = 0., np.inf
         conditioned_lengths = self.config["condition_lengths_on_width"]
-        selected_groups = list(zip(self.groups, densities, reference_flags))
+        # A forced reference carries total ID=IBIAS, not ID/M=IBIAS.
+        current_factors = [multiplicity[i] if exact else 1.
+                           for i, exact in zip(self.reference_index, reference_flags)]
+        selected_groups = list(zip(self.groups, densities, reference_flags, current_factors))
         if conditioned_lengths:
             if not reference_flags[0]:
                 raise ValueError("Conditional sizing requires the first group to be the ideal bias reference")
             selected_groups = selected_groups[:1]
-        for group, density, exact in selected_groups:
+        for group, density, exact, current_factor in selected_groups:
             axis = self.domain.axes[self.domain.names.index(group.width)]
             factor = 1. if exact else 2.
-            lower_current = max(lower_current, axis[0]*1e-6*density/factor)
-            upper_current = min(upper_current, axis[-1]*1e-6*density*factor)
+            lower_current = max(lower_current, axis[0]*1e-6*density*current_factor/factor)
+            upper_current = min(upper_current, axis[-1]*1e-6*density*current_factor*factor)
         current_index = self.domain.names.index("IBIAS_A")
         current_axis = self.domain.axes[current_index]
         eligible = current_axis[(current_axis >= lower_current) & (current_axis <= upper_current)]
@@ -117,34 +144,48 @@ class GmidSampler:
         design[current_index] = current_scale
         params["IBIAS_A"] = current_scale
         if conditioned_lengths:
-            for group_index, (group, reference) in enumerate(zip(self.groups[1:], self.reference_index[1:]), 1):
-                axis = self.domain.axes[self.domain.names.index(group.length)]
-                model = self.mos[reference].model.lower()
-                # These zero-body/fixed-VDS curves depend only on the frozen
-                # domain and LUT, not on a proposal's current or gm/ID target.
-                values, ratio = self._length_table(model, group.length, supply)
-                target = chosen[group.width]
-                crossing = (ratio[:, :-1] >= target) & (ratio[:, 1:] <= target) & (ratio[:, :-1] > ratio[:, 1:]) & (values[:, :-1, 0] > 0)
-                valid = crossing.any(axis=1)
-                indices = crossing.shape[1]-1-np.argmax(crossing[:, ::-1], axis=1)
-                rows = np.arange(len(axis))
-                fraction = np.divide(ratio[rows, indices]-target,
-                                     ratio[rows, indices]-ratio[rows, indices+1],
-                                     out=np.zeros(len(axis)), where=valid)
-                density = values[rows, indices, 0] + fraction * (values[rows, indices+1, 0]-values[rows, indices, 0])
-                widths = current_scale / np.maximum(density, 1e-30) * 1e6
-                width_axis = self.domain.axes[self.domain.names.index(group.width)]
-                eligible_lengths = np.flatnonzero(valid & (widths >= width_axis[0]/2.) & (widths <= width_axis[-1]*2.))
+            # Select a shared L once, satisfying all reference widths using it.
+            # Sequential independent selections would invalidate earlier groups.
+            by_length = {}
+            for group_index, group in enumerate(self.groups[1:], 1):
+                by_length.setdefault(group.length, []).append(group_index)
+            for parameter, group_indices in by_length.items():
+                axis = self.domain.axes[self.domain.names.index(parameter)]
+                eligible = np.ones(len(axis), dtype=bool)
+                if parameter == self.groups[0].length:
+                    eligible &= np.isclose(axis, params[parameter], atol=1e-12, rtol=0.)
+                candidates = {}
+                for group_index in group_indices:
+                    group = self.groups[group_index]
+                    reference = self.reference_index[group_index]
+                    model = self.mos[reference].model.lower()
+                    values, ratio = self._length_table(model, parameter, supply)
+                    target = chosen[group.width]
+                    crossing = (ratio[:, :-1] >= target) & (ratio[:, 1:] <= target) & (ratio[:, :-1] > ratio[:, 1:]) & (values[:, :-1, 0] > 0)
+                    valid = crossing.any(axis=1)
+                    indices = crossing.shape[1]-1-np.argmax(crossing[:, ::-1], axis=1)
+                    rows = np.arange(len(axis))
+                    fraction = np.divide(ratio[rows, indices]-target,
+                                         ratio[rows, indices]-ratio[rows, indices+1],
+                                         out=np.zeros(len(axis)), where=valid)
+                    density = values[rows, indices, 0] + fraction * (values[rows, indices+1, 0]-values[rows, indices, 0])
+                    widths = current_scale / (np.maximum(density, 1e-30)*current_factors[group_index]) * 1e6
+                    width_axis = self.domain.axes[self.domain.names.index(group.width)]
+                    eligible &= valid & (widths >= width_axis[0]/2.) & (widths <= width_axis[-1]*2.)
+                    candidates[group_index] = density
+                eligible_lengths = np.flatnonzero(eligible)
                 if not len(eligible_lengths):
                     return None, {"rejection": "no_length_grid_for_lut_sizing", "gmid_targets": chosen}
                 index = int(rng.choice(eligible_lengths))
-                params[group.length] = float(axis[index])
-                design[self.domain.names.index(group.length)] = axis[index]
-                densities[group_index] = float(density[index])
+                params[parameter] = float(axis[index])
+                design[self.domain.names.index(parameter)] = axis[index]
+                for group_index, density in candidates.items():
+                    densities[group_index] = float(density[index])
         resolved = resolve_circuit(self.circuit, params)
         device_params = {d.name.upper(): {k: e.value for k, e in d.parameters.items()} for d in resolved.devices}
         length = np.array([device_params[d.name.upper()]["L"] for d in self.mos])
-        guesses = [current_scale / density * 1e6 for density in densities]
+        guesses = [current_scale / (density*factor) * 1e6
+                   for density, factor in zip(densities, current_factors)]
         node_guess = np.full(len(self.nets), vcm)
         seeds = NODE_SEEDS[self.circuit.source_path.stem]
         for i, net in enumerate(self.nets):
@@ -204,9 +245,9 @@ class GmidSampler:
                                     np.r_[np.asarray(predictions)-fixed_terms, .03*original_seed],
                                     bounds=(0., supply), tol=1e-5).x
         if self.config["sizing_mode"] == "nominal_lut":
-            # All five engineering profiles have nominal ID/M=IBIAS at their
-            # reference transistors. Actual branch currents are observed later;
-            # bad OPs remain useful dataset labels rather than being discarded.
+            # Nominal branch references use ID/M=IBIAS as a proposal heuristic;
+            # an isolated forced-current reference instead has total ID=IBIAS.
+            # Actual branch currents are observed in the subsequent BSIM OP.
             metadata = {"gmid_targets": chosen, "sizing_mode": "nominal_lut",
                         "lut_solver_error": None, "nominal_reference_current_a": current_scale,
                         "conditioned_lengths": conditioned_lengths,
@@ -214,8 +255,8 @@ class GmidSampler:
             if len(reference_densities) != len(self.groups):
                 return None, {**metadata, "rejection": "unreachable_bias_gmid"}
             try:
-                for group, reference in zip(self.groups, self.reference_index):
-                    width = current_scale/reference_densities[reference]*1e6
+                for group, reference, factor in zip(self.groups, self.reference_index, current_factors):
+                    width = current_scale/(reference_densities[reference]*factor)*1e6
                     design[self.domain.names.index(group.width)] = self.domain.quantize_width(group.width, width)
             except ValueError:
                 return None, {**metadata, "rejection": "width_out_of_range"}

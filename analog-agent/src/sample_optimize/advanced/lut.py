@@ -62,7 +62,7 @@ class MosLUT:
         devices = {d.name.upper(): d for d in circuit.devices}
         model_tables, model_lengths = {}, {}
         for group in groups:
-            for member in group.members:
+            for member_index, member in enumerate(group.members):
                 device = devices[member]
                 model = device.model.lower()
                 spec = {"device_type": device.device_type.value,
@@ -70,8 +70,10 @@ class MosLUT:
                 if model in model_tables and model_tables[model] != spec:
                     raise ValueError(f"Inconsistent MOS model usage: {model}")
                 model_tables[model] = spec
+                member_lengths = getattr(group, "member_lengths", ())
+                length_parameter = member_lengths[member_index] if member_lengths else group.length
                 model_lengths.setdefault(model, set()).update(
-                    float(v) for v in domain.axes[domain.names.index(group.length)])
+                    float(v) for v in domain.axes[domain.names.index(length_parameter)])
         limit = config["max_lengths"]
         model_tables = dict(sorted(model_tables.items()))
         for model, spec in model_tables.items():

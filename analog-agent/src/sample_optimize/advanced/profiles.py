@@ -13,6 +13,9 @@ class Group:
     length: str
     reference: str
     members: tuple[str, ...]
+    # A width constraint need not imply one length constraint (Wilson mirrors).
+    # Entries follow members; length remains the reference transistor's length.
+    member_lengths: tuple[str, ...] = ()
 
 
 # Reference transistors, including the diode element of self-cascode bias stacks.
@@ -32,6 +35,8 @@ REFERENCES = {
         "XPM2",
     ],
     "Opamp1": ["XNM7", "XPM8", "XPM11", "XNM9", "XM11", "XM10", "XM9", "XM1", "XM7"],
+    "loOpamp116": ["XNM0", "XNM1", "XNM3", "XPM0", "XPM1", "XNM2",
+                 "XNM7", "XNM8", "XPM2", "XPM3", "XPM4"],
 }
 SIGNAL = {
     "5t_ota": ["XMTAIL", "XMN_INP", "XMN_INN", "XMP_DIODE", "XMP_OUT"],
@@ -40,6 +45,7 @@ SIGNAL = {
         "XMP_CAS_P", "XMP_CAS_N", "XMN_SINK_P", "XMN_SINK_N", "XMN_CAS_P", "XMN_CAS_N", "XMP_STAGE2", "XMN_STAGE2"],
     "Opamp0": [f"XPM{i}" for i in range(7)] + [f"XNM{i}" for i in range(4)],
     "Opamp1": ["XM10", "XM15", "XM9", "XM5", "XM16", "XM14", "XM8", "XM6", "XM13", "XM7", "XM1", "XM0", "XM11", "XM12", "XNM5"],
+    "loOpamp116": ["XNM6", "XNM8", "XNM9", "XNM7", "XNM5", "XPM4", "XPM1", "XPM2"],
 }
 
 # Interior voltage seeds for the coupled KCL solver. These are starting guesses,
@@ -56,6 +62,9 @@ NODE_SEEDS = {
     "Opamp1": {"VB1": .7, "VB2": 1.1, "VB3": .6, "NET1": .2, "NET2": 1.2,
         "NET3": 1.7, "NET4": 1.2, "NET5": .1, "NET6": 1.2, "NET11": .6,
         "NET22": .1, "NET23": .1, "NET24": 1.7, "NET25": 1.7, "NET26": 1.7, "NET27": 1.7},
+    "loOpamp116": {"VBIAS": .85, "N0": .15, "N1": .15, "N2": .45,
+                 "N3": .25, "N4": .45, "N5": 1.0, "N6": .85,
+                 "N7": 1.15, "N8": 1.35},
 }
 
 
@@ -78,9 +87,8 @@ def make_profile(name, circuit, gmid_config):
         device = devices[ref]
         width, length = (_parameter(device.parameters[k]) for k in ("W", "L"))
         members = tuple(d.name.upper() for d in mos if _parameter(d.parameters["W"]) == width)
-        if any(_parameter(devices[m].parameters["L"]) != length for m in members):
-            raise ValueError(f"Shared group {width} has incompatible length bindings")
-        groups.append(Group(width, length, ref, members))
+        member_lengths = tuple(_parameter(devices[m].parameters["L"]) for m in members)
+        groups.append(Group(width, length, ref, members, member_lengths))
     if len({g.width for g in groups}) != len(groups) or set(m for g in groups for m in g.members) != set(d.name.upper() for d in mos):
         raise ValueError("Profile must cover every MOS exactly once by shared sizing group")
     if set(SIGNAL[name]) - devices.keys():
