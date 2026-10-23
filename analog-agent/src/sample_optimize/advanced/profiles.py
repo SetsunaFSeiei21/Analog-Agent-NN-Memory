@@ -35,8 +35,10 @@ REFERENCES = {
         "XPM2",
     ],
     "Opamp1": ["XNM7", "XPM8", "XPM11", "XNM9", "XM11", "XM10", "XM9", "XM1", "XM7"],
-    "loOpamp116": ["XNM0", "XNM1", "XNM3", "XPM0", "XPM1", "XNM2",
-                 "XNM7", "XNM8", "XPM2", "XPM3", "XPM4"],
+    # One reference per independent W1..W8. Multiplicity expressions remain
+    # in the netlist; XNM2 and XPM3 share widths with existing references.
+    "loOpamp116": ["XNM0", "XNM1", "XNM8", "XNM3",
+                  "XNM7", "XPM0", "XPM1", "XPM2"],
 }
 SIGNAL = {
     "5t_ota": ["XMTAIL", "XMN_INP", "XMN_INN", "XMP_DIODE", "XMP_OUT"],

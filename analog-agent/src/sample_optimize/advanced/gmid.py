@@ -31,10 +31,11 @@ class GmidSampler:
         """An isolated diode branch carries IBIAS even with a floating source.
 
         Ignore gate/capacitor connections, but reject another DC conduction
-        path at the drain. The zero-body diode LUT also requires B=S.
+        path at the drain. B=S is not required: branch KCL determines total
+        ID, while the actual source/bulk voltages determine the LUT slice.
         """
-        drain, gate, source, bulk = (p.upper() for p in device.pins)
-        if drain != gate or source != bulk or drain in {"VDD", "VSS", "0", "VINP", "VINN", "VOUT"}:
+        drain, gate, _, _ = (p.upper() for p in device.pins)
+        if drain != gate or drain in {"VDD", "VSS", "0", "VINP", "VINN", "VOUT"}:
             return False
         feeds = []
         for other in self.circuit.devices:
@@ -57,28 +58,61 @@ class GmidSampler:
         terminal = 1 if device.device_type == DeviceType.NMOS else 0
         return feed.pins[terminal].upper() == drain
 
-    def _initial_curve(self, model, length, diode, supply):
-        key = (model, float(length), diode, min(.9, supply))
+    def _initial_curve(self, model, length, diode, supply, body=0.):
+        key = (model, float(length), diode, min(.9, supply), float(body))
         if key not in self._initial_curves:
             vg = self.lut.vgs_axis
-            values = self.lut.lookup(model, length, 0., vg, vg if diode else min(.9, supply))
+            values = self.lut.lookup(model, length, body, vg, vg if diode else min(.9, supply))
             ratio = values[:, 1] / np.maximum(values[:, 0], 1e-30)
             values.setflags(write=False)
             ratio.setflags(write=False)
             self._initial_curves[key] = values, ratio
         return self._initial_curves[key]
 
-    def _length_table(self, model, parameter, supply):
-        key = (model, parameter, min(.9, supply))
+    def _length_table(self, model, parameter, supply, body=0., diode=False):
+        key = (model, parameter, min(.9, supply), float(body), diode)
         if key not in self._length_tables:
             axis = self.domain.axes[self.domain.names.index(parameter)]
             vg = self.lut.vgs_axis
-            values = self.lut.lookup(model, axis[:, None], 0., vg[None, :], min(.9, supply))
+            values = self.lut.lookup(model, axis[:, None], body, vg[None, :],
+                                     vg[None, :] if diode else min(.9, supply))
             ratio = values[..., 1] / np.maximum(values[..., 0], 1e-30)
             values.setflags(write=False)
             ratio.setflags(write=False)
             self._length_tables[key] = values, ratio
         return self._length_tables[key]
+
+    def _seed_nodes(self, supply, vcm):
+        node_guess = np.full(len(self.nets), vcm)
+        seeds = NODE_SEEDS[self.circuit.source_path.stem]
+        for i, net in enumerate(self.nets):
+            if net in seeds:
+                node_guess[i] = seeds[net] * supply / 1.8
+            if net == "NTAIL" or (net == "NET1" and self.circuit.source_path.stem == "Opamp1"):
+                node_guess[i] = max(0.05, vcm - 0.6)
+            elif net in {"N_INPUT_TAIL", "NET9"}:
+                node_guess[i] = min(supply-0.05, vcm+0.6)
+        return node_guess
+
+    def _voltages(self, nodes, supply, vss, vcm):
+        # All solver coordinates are relative to VSS. SPICE node 0 remains
+        # absolute ground, which need not be the circuit's VSS terminal.
+        voltage = dict(zip(self.nets, nodes))
+        voltage.update({"VDD": supply, "VSS": 0., "0": -vss, "VINP": vcm})
+        voltage["VINN"] = voltage["VOUT"]
+        return voltage
+
+    @staticmethod
+    def _inverse_curve(vg, values, target):
+        ratio = values[:, 1] / np.maximum(values[:, 0], 1e-30)
+        crossing = np.flatnonzero((ratio[:-1] >= target) & (ratio[1:] <= target) &
+                                  (ratio[:-1] > ratio[1:]) & (values[:-1, 0] > 0))
+        if not len(crossing):
+            return None
+        j = crossing[-1]
+        fraction = (ratio[j]-target)/(ratio[j]-ratio[j+1])
+        return (vg[j]+fraction*(vg[j+1]-vg[j]),
+                values[j, 0]+fraction*(values[j+1, 0]-values[j, 0]))
 
     def propose(self, rng):
         design = self.domain.random(rng, 1)[0]
@@ -96,16 +130,26 @@ class GmidSampler:
         signs = np.array([1 if d.device_type == DeviceType.NMOS else -1 for d in self.mos])
         models = {model: np.array([i for i, d in enumerate(self.mos) if d.model.lower() == model])
                   for model in sorted({d.model.lower() for d in self.mos})}
+        node_guess = self._seed_nodes(supply, vcm)
+        voltage = self._voltages(node_guess, supply, vss, vcm)
+        # These are proposal seeds, not measured operating points. Use the
+        # actual pins and MOS polarity even in the cheap early screening.
+        initial_bodies = [signs[i]*(voltage[d.pins[2].upper()]-voltage[d.pins[3].upper()])
+                          for i, d in enumerate(self.mos)]
+        diodes = [d.pins[0].upper() == d.pins[1].upper() for d in self.mos]
         densities, reference_flags = [], []
         for group, reference in zip(self.groups, self.reference_index):
             reference_device = self.mos[reference]
             model = reference_device.model.lower()
             vg = self.lut.vgs_axis
-            # Only an isolated reference diode carrying the ideal IBIAS can be
-            # rejected cheaply using its exact LUT current. Other branch ratios
-            # remain unknowns of the coupled KCL solve.
+            # Forced total current and diode-connected bias are independent
+            # properties. Every diode uses VDS=VGS, including mirrored branches.
             bias_reference = self._is_bias_reference(reference_device)
-            values, ratio = self._initial_curve(model, length[reference], bias_reference, supply)
+            values, ratio = self._initial_curve(model, length[reference], diodes[reference],
+                                                 supply, initial_bodies[reference])
+            if not np.isfinite(values).all():
+                return None, {"rejection": "lut_out_of_domain", "gmid_targets": chosen,
+                              "device": reference_device.name, "stage": "initial_curve"}
             roots = []
             target = chosen[group.width]
             for i in range(len(vg)-1):
@@ -127,9 +171,9 @@ class GmidSampler:
                            for i, exact in zip(self.reference_index, reference_flags)]
         selected_groups = list(zip(self.groups, densities, reference_flags, current_factors))
         if conditioned_lengths:
-            if not reference_flags[0]:
-                raise ValueError("Conditional sizing requires the first group to be the ideal bias reference")
-            selected_groups = selected_groups[:1]
+            selected_groups = [entry for entry in selected_groups if entry[2]]
+            if not selected_groups:
+                raise ValueError("Conditional sizing requires an isolated diode driven by IBIAS_A")
         for group, density, exact, current_factor in selected_groups:
             axis = self.domain.axes[self.domain.names.index(group.width)]
             factor = 1. if exact else 2.
@@ -147,19 +191,25 @@ class GmidSampler:
             # Select a shared L once, satisfying all reference widths using it.
             # Sequential independent selections would invalidate earlier groups.
             by_length = {}
-            for group_index, group in enumerate(self.groups[1:], 1):
-                by_length.setdefault(group.length, []).append(group_index)
+            anchors = {g.length for g, exact in zip(self.groups, reference_flags) if exact}
+            for group_index, (group, exact) in enumerate(zip(self.groups, reference_flags)):
+                if not exact:
+                    by_length.setdefault(group.length, []).append(group_index)
             for parameter, group_indices in by_length.items():
                 axis = self.domain.axes[self.domain.names.index(parameter)]
                 eligible = np.ones(len(axis), dtype=bool)
-                if parameter == self.groups[0].length:
+                if parameter in anchors:
                     eligible &= np.isclose(axis, params[parameter], atol=1e-12, rtol=0.)
                 candidates = {}
                 for group_index in group_indices:
                     group = self.groups[group_index]
                     reference = self.reference_index[group_index]
                     model = self.mos[reference].model.lower()
-                    values, ratio = self._length_table(model, parameter, supply)
+                    values, ratio = self._length_table(model, parameter, supply,
+                                                       initial_bodies[reference], diodes[reference])
+                    if not np.isfinite(values).all():
+                        return None, {"rejection": "lut_out_of_domain", "gmid_targets": chosen,
+                                      "device": self.mos[reference].name, "stage": "length_table"}
                     target = chosen[group.width]
                     crossing = (ratio[:, :-1] >= target) & (ratio[:, 1:] <= target) & (ratio[:, :-1] > ratio[:, 1:]) & (values[:, :-1, 0] > 0)
                     valid = crossing.any(axis=1)
@@ -186,15 +236,6 @@ class GmidSampler:
         length = np.array([device_params[d.name.upper()]["L"] for d in self.mos])
         guesses = [current_scale / (density*factor) * 1e6
                    for density, factor in zip(densities, current_factors)]
-        node_guess = np.full(len(self.nets), vcm)
-        seeds = NODE_SEEDS[self.circuit.source_path.stem]
-        for i, net in enumerate(self.nets):
-            if net in seeds:
-                node_guess[i] = seeds[net] * supply / 1.8
-            if net == "NTAIL" or (net == "NET1" and self.circuit.source_path.stem == "Opamp1"):
-                node_guess[i] = max(0.05, vcm - 0.6)
-            elif net in {"N_INPUT_TAIL", "NET9"}:
-                node_guess[i] = min(supply-0.05, vcm+0.6)
         # Initialize voltage differences from inverse gm/ID, including body
         # effect. Starting every cascode around VCM can leave it switched off,
         # where its gm/ID residual has no useful local derivative.
@@ -217,33 +258,46 @@ class GmidSampler:
             fixed_terms.append(constant)
         matrix = np.asarray(voltage_equations)
         original_seed = node_guess.copy()
-        for _ in range(3):
-            voltage = dict(zip(self.nets, node_guess))
-            voltage.update(fixed)
-            voltage["VINN"] = voltage["VOUT"]
+
+        def inverse_at_nodes(nodes):
+            voltage = self._voltages(nodes, supply, vss, vcm)
             predictions = []
             reference_densities = {}
             for i in active:
                 device = self.mos[i]
                 drain, gate, source, bulk = (voltage[p.upper()] for p in device.pins)
-                body = np.clip(signs[i]*(source-bulk), 0., supply)
+                # No clipping of body bias into the reverse-only LUT domain.
+                body = signs[i]*(source-bulk)
                 vd = np.clip(abs(drain-source), .05, supply)
                 vg = self.lut.vgs_axis
-                values = self.lut.lookup(device.model, length[i], body, vg, vd)
-                ratio = values[:, 1]/np.maximum(values[:, 0], 1e-30)
+                values = self.lut.lookup(device.model, length[i], body, vg,
+                                         vg if diodes[i] else vd)
+                if not np.isfinite(values).all():
+                    return None, None, device.name
                 target = chosen[self.groups[width_indices[i]].width]
-                crossing = np.flatnonzero((ratio[:-1] >= target) & (ratio[1:] <= target) & (ratio[:-1] > ratio[1:]) & (values[:-1, 0] > 0))
-                if len(crossing):
-                    j = crossing[-1]
-                    fraction = (ratio[j]-target)/(ratio[j]-ratio[j+1])
-                    predictions.append(vg[j]+fraction*(vg[j+1]-vg[j]))
+                root = self._inverse_curve(vg, values, target)
+                if root is not None:
+                    predictions.append(root[0])
                     if i in self.reference_index:
-                        reference_densities[i] = values[j, 0]+fraction*(values[j+1, 0]-values[j, 0])
+                        reference_densities[i] = root[1]
                 else:
                     predictions.append(np.clip(signs[i]*(gate-source), .1, supply))
+            return predictions, reference_densities, None
+
+        for _ in range(3):
+            predictions, _, unsupported = inverse_at_nodes(node_guess)
+            if unsupported is not None:
+                return None, {"rejection": "lut_out_of_domain", "gmid_targets": chosen,
+                              "device": unsupported, "stage": "node_initialization"}
             node_guess = lsq_linear(np.vstack([matrix, .03*np.eye(len(self.nets))]),
                                     np.r_[np.asarray(predictions)-fixed_terms, .03*original_seed],
                                     bounds=(0., supply), tol=1e-5).x
+        # Refresh densities at the final node estimate; the preceding lookup
+        # used the voltages before the last least-squares update.
+        _, reference_densities, unsupported = inverse_at_nodes(node_guess)
+        if unsupported is not None:
+            return None, {"rejection": "lut_out_of_domain", "gmid_targets": chosen,
+                          "device": unsupported, "stage": "node_initialization"}
         if self.config["sizing_mode"] == "nominal_lut":
             # Nominal branch references use ID/M=IBIAS as a proposal heuristic;
             # an isolated forced-current reference instead has total ID=IBIAS.
@@ -267,8 +321,7 @@ class GmidSampler:
         upper = np.r_[np.full(len(self.nets), supply), np.full(len(self.groups), np.log(1e4))]
 
         def residual(x):
-            voltages = dict(zip(self.nets, x[:len(self.nets)]))
-            voltages.update({"VDD": supply, "VSS": 0., "0": -vss, "VINP": vcm, "VINN": voltages["VOUT"]})
+            voltages = self._voltages(x[:len(self.nets)], supply, vss, vcm)
             pins = np.array([[voltages[p.upper()] for p in d.pins] for d in self.mos])
             drain, gate, source, bulk = pins.T
             forward = signs * (drain-source)
@@ -276,7 +329,7 @@ class GmidSampler:
             actual_source = np.where(forward >= 0, source, drain)
             vg = np.maximum(signs * (gate-actual_source), 0.)
             vd = abs(drain-source)
-            body = np.maximum(signs * (actual_source-bulk), 0.)
+            body = signs * (actual_source-bulk)
             values = np.empty((len(self.mos), 3))
             for model, ix in models.items():
                 values[ix] = self.lut.lookup(model, length[ix], body[ix], vg[ix], vd[ix])

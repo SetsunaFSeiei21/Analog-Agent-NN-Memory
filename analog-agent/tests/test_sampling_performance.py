@@ -166,14 +166,15 @@ def test_gmid_curve_cache_preserves_points_rejections_and_rng(mode, conditioned)
     lut = synthetic_lut(metadata, values, ir)
 
     class UncachedSampler(GmidSampler):
-        def _initial_curve(self, kind, length, diode, supply):
+        def _initial_curve(self, kind, length, diode, supply, body=0.):
             vg = self.lut.vgs_axis
-            values = self.lut.lookup(kind, length, 0., vg, vg if diode else min(.9, supply))
+            values = self.lut.lookup(kind, length, body, vg, vg if diode else min(.9, supply))
             return values, values[:, 1]/np.maximum(values[:, 0], 1e-30)
-        def _length_table(self, kind, parameter, supply):
+        def _length_table(self, kind, parameter, supply, body=0., diode=False):
             axis = self.domain.axes[self.domain.names.index(parameter)]
             vg = self.lut.vgs_axis
-            values = self.lut.lookup(kind, axis[:, None], 0., vg[None, :], min(.9, supply))
+            values = self.lut.lookup(kind, axis[:, None], body, vg[None, :],
+                                     vg[None, :] if diode else min(.9, supply))
             return values, values[..., 1]/np.maximum(values[..., 0], 1e-30)
 
     args = (ir, domain, groups, targets, lut, {"VDD": 1.8, "VSS": 0, "VCM": .9}, config)
