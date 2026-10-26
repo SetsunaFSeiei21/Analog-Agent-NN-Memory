@@ -39,6 +39,9 @@ REFERENCES = {
     # in the netlist; XNM2 and XPM3 share widths with existing references.
     "loOpamp116": ["XNM0", "XNM1", "XNM8", "XNM3",
                   "XNM7", "XPM0", "XPM1", "XPM2"],
+    # One reference per independent W1..W8; XNM1 carries IBIAS_A.
+    "ltOpamp114": ["XNM1", "XPM5", "XNM2", "XNM13",
+                    "XNM11", "XPM6", "XPM15", "XNM4"],
 }
 SIGNAL = {
     "5t_ota": ["XMTAIL", "XMN_INP", "XMN_INN", "XMP_DIODE", "XMP_OUT"],
@@ -48,6 +51,8 @@ SIGNAL = {
     "Opamp0": [f"XPM{i}" for i in range(7)] + [f"XNM{i}" for i in range(4)],
     "Opamp1": ["XM10", "XM15", "XM9", "XM5", "XM16", "XM14", "XM8", "XM6", "XM13", "XM7", "XM1", "XM0", "XM11", "XM12", "XNM5"],
     "loOpamp116": ["XNM6", "XNM8", "XNM9", "XNM7", "XNM5", "XPM4", "XPM1", "XPM2"],
+    "ltOpamp114": ["XNM10", "XNM12", "XNM13", "XNM11", "XNM9",
+                    "XPM6", "XPM16", "XPM15", "XNM8"],
 }
 
 # Interior voltage seeds for the coupled KCL solver. These are starting guesses,
@@ -67,6 +72,9 @@ NODE_SEEDS = {
     "loOpamp116": {"VBIAS": .85, "N0": .15, "N1": .15, "N2": .45,
                  "N3": .25, "N4": .45, "N5": 1.0, "N6": .85,
                  "N7": 1.15, "N8": 1.35},
+    "ltOpamp114": {"VBIAS": .5, "N0": .85, "N1": .2, "N2": .5,
+                    "N3": 1.2, "N4": .4, "N5": 1.2, "N6": .4,
+                    "N7": 1.2},
 }
 
 
@@ -108,3 +116,18 @@ def make_profile(name, circuit, gmid_config):
     if any(axis[0] <= 0 for axis in targets.values()):
         raise ValueError("gm/ID group targets must be positive")
     return tuple(groups), tuple(SIGNAL[name]), targets
+
+
+# Opamp2: seven shared width groups; XNM7 is the unit-current bias device.
+REFERENCES["Opamp2"] = [
+    "XPM6", "XNM7", "XNM5", "XNM0", "XNM3", "XPM3", "XPM1",
+]
+SIGNAL["Opamp2"] = [
+    "XNM4", "XNM0", "XNM1", "XNM3", "XNM2",
+    "XPM3", "XPM0", "XPM1", "XPM2",
+]
+NODE_SEEDS["Opamp2"] = {
+    "NET6": 1.25, "VB1": 0.8, "NET5": 0.1, "NET3": 0.5,
+    "NET1": 0.15, "NET16": 0.3, "NET18": 0.3,
+    "NET4": 0.8, "NET19": 1.3, "NET2": 1.3,
+}

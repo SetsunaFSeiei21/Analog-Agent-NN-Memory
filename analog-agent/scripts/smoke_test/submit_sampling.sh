@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # 只修改这里：烟测参数和集群配置。
-CIRCUIT_NAME="loOpamp116"
+CIRCUIT_NAME="ltOpamp114"
 CIRCUIT_TYPE="single_ended_opamp"
 SOURCE_DIR="Sample_Optimizer_Circuit/$CIRCUIT_NAME"
 SAMPLING_MODE="five"

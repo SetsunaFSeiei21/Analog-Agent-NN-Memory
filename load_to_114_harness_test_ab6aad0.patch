@@ -1,0 +1,2245 @@
+diff --git a/test/load_to_114_excel/.spiceinit b/test/load_to_114_excel/.spiceinit
+new file mode 100644
+index 0000000000000000000000000000000000000000..6bc157fad6a955f0a1912caaca1cf77e19cdc065
+--- /dev/null
++++ b/test/load_to_114_excel/.spiceinit
+@@ -0,0 +1 @@
++set ngbehavior=hs
+diff --git a/test/load_to_114_excel/README_load_to_114_Excel.md b/test/load_to_114_excel/README_load_to_114_Excel.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..7273e6c7c32113063be7ba825ec7927f35f4db7f
+--- /dev/null
++++ b/test/load_to_114_excel/README_load_to_114_Excel.md
+@@ -0,0 +1,101 @@
++# load_to_114：九指标与 DC/Excel 独立测试
++
++本目录沿用仓库 `test/two_stage_opamp_otaf_excel` 的测量与导出格式，包含 16 只 Sky130 LVT MOS、21 个独立设计参数、9 项性能指标。测试格式基于远端 `main` 提交 `ab6aad06c1e254a485b50d5b02d8b6267839a4a1`。
++
++该提交尚未包含 `load_to_114`。这里使用本次已经确定的 21 参数网表快照，保持其 D/G/S/B 连接、W/L/m 表达式、内部偏置电流与 Miller 补偿电容；没有调整为其他电路。
++
++## 放置位置与运行
++
++将整个 `load_to_114_excel` 目录放到 `harness/test/` 下。目录内包括：
++
++- `load_to_114_all_metrics.cir`：完整测试台，内嵌 DUT、全部参数、DC/AC/瞬态分析。
++- `load_to_114_export_excel.py`：DC raw 到 CSV、JSON、Excel 的导出程序。
++- `.spiceinit`：与仓库其他测试相同的 `set ngbehavior=hs` 设置。
++- `requirements-load_to_114-excel.txt`：Excel 导出依赖。
++- 本说明文件。
++
++在服务器上执行：
++
++```bash
++cd /share/home/202411094934/python_project/harness/test/load_to_114_excel
++python3 -m pip install -r requirements-load_to_114-excel.txt
++ngspice -b -o load_to_114.log load_to_114_all_metrics.cir
++```
++
++必须从此测试目录运行，让 ngspice 读取这里的 `.spiceinit` 并找到配套导出程序。首次运行前检查 `.cir` 顶部的 `.lib`；已填入此前使用的路径：
++
++```spice
++.lib "/share/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
++```
++
++模型库必须包含 `sky130_fd_pr__nfet_01v8_lvt` 和 `sky130_fd_pr__pfet_01v8_lvt`。
++
++## 修改和复现设计点
++
++直接编辑 `.cir` 的 `DESIGN PARAMETERS` 区域再运行。它是独立快照，不读取 `Sample_Optimizer_Circuit` 下的 `.sp` 或 `_params.sp`，也不访问采样数据库。
++
++21 个独立参数为 `DESVAR_W1..W8`、`DESVAR_L1..L8`、`DESVAR_M1..M3`、`CCOMP_F`、`IBIAS_A`。W/L 使用裸数值，单位为 μm；电流为 A，电容为 F，M 为正整数。
++
++当前默认值与此前生成的参数文件一致：参考电流 1 μA，补偿电容 1 pF，M1=1、M2=4、M3=1。它们只是初始尺寸，尚未用真实 PDK 验证为正常偏置或稳定的设计点。
++
++若要复现某一行 `dc_not_converged`，必须从该行对应的设计参数记录复制全部 21 个值到这里，包括 IBIAS_A 与 CCOMP_F。仅复制 OP 宽表里部分 MOS 的 W/L/m 不足以完整复现；默认参数测试也不等于复现该失败点。
++
++端口沿用原始电路映射：`in1 -> VINN`，`in2 -> VINP`。原来的 `ibias` 为内部节点 VBIAS，电流源方向为 VDD 到 VBIAS。所有 NMOS bulk 接 VSS，所有 PMOS bulk 接 VDD。
++
++保留的主要约束为：输入差分对、NMOS cascode 对、一级 PMOS 镜像对分别共享各自的 W/L/m；尾管 m=`1+2*DESVAR_M1`；二级 PMOS/NMOS m=`DESVAR_M1*DESVAR_M2`；cascode 偏置管 m=`DESVAR_M3`。
++
++二级 NMOS `XNM8` 仍使用 W3/L3、栅极接 VBIAS，因此它相对于参考 NMOS 的电流比例还依赖 `(W3/L3)/(W1/L1)`；测试没有强制这两组几何参数相等。
++
++## 测试条件与结果
++
++默认条件为 VDD=1.8 V、VSS=0 V、VCM=0.72 V、外部负载 1 pF、tt、27 °C。供电、输入共模、负载、AC 扫描与瞬态设置位于同一 `.cir` 的 `TEST CONDITIONS` 区域。
++
++`CCOMP_F` 是 DUT 内部的补偿电容，`LOAD_C` 是测试台外部的负载电容，二者独立。
++
++运行后生成：
++
++- `load_to_114.log`：原始 ngspice 日志。
++- `load_to_114_metrics.txt`：一行 CSV 表头和一行九指标数值。
++- `load_to_114_dc_operating_point.raw`：AC/瞬态分析前保存的 ASCII DC 工作点。
++- `load_to_114_dc_operating_point.csv`：一个设计点一行的全部 MOS 工作点宽表。
++- `load_to_114_results.xlsx`：四张表，分别为 `DC_Operating_Point`、`MOS_Capacitances`、`Metrics`、`Setup`。
++
++九项指标为 DC gain、UGF、PM、CMRR、PSRR+、PSRR-、上升 SR、下降 SR、静态功耗。算法沿用仓库现有独立测试：增益在 1 Hz 测量；UGF 与 PM 使用同一次 AC 扫描的首次下降单位增益交点；CMRR 使用差模/共模重建；PSRR 使用跟随器电源抑制定义；SR 使用输出跃迁 10%–90% 的平均斜率。缺失交点或有效跃迁保留 `nan`，有效负 dB、负 PM 不丢弃。
++
++DC 工作点与静态功耗均来自单个安静的单位增益跟随器实例 `XDUT_CM`。同一文件中其他实例分别用于 AC、PSRR 和瞬态测量，不能将全部实例的供电电流相加作为单个运放的功耗。
++
++DC 导出保留四端连接与电压、W/L/m、Id、gm、gds、gmbs、Vth、Vdsat、电容矩阵与电荷。模型电流、跨导、电容已含 m，不再额外乘 m；PMOS 端电压和 BSIM 电容矩阵保留原始符号。Excel 中派生诊断列用公式，打开 Excel 或 LibreOffice 后重算；CSV/JSON 已含计算值。
++
++## 排查 OP 失败
++
++首先看日志中的第一条实际错误：
++
++```bash
++rg -n -i 'error|fatal|singular|converg|timestep|unknown|no such' load_to_114.log
++```
++
++只有部分性能指标为 `nan`，并不必然表示 DC 未收敛；同时查看 raw 文件、跟随误差、节点电压和原始日志。结果文件存在或 ngspice 退出码为 0，也不能单独证明所有指标有效。
++
++如果报告 `Missing required DC vector`，需检查模型是否载入、OP 是否求解成功、尺寸是否有可用模型，以及 PDK 内部器件名称是否与查询一致。
++
++查询层级沿用仓库其他独立测试：`@m.xdut_cm.<器件名>.m<完整模型名>[字段]`。如果安装的 PDK 将原始 MOS 命名为 `m0`，而不是 `msky130_fd_pr__...`，须将此 `.cir` 中对应查询的末级实例名改为实际名称；这属于数据读取层级差异，不能直接当作电路不收敛。
++
++本测试沿用仓库现有的原始字段覆盖，要求完整 DC 向量；缺失时导出程序报错，不生成伪造的正常工作点。不要混用不同次运行的 raw、metrics 和 netlist。每次运行会更新本目录的结果；需要对比多个设计点时，请分别保存整套输入与输出。
++
++Python 依赖修复后可单独重新导出：
++
++```bash
++python3 load_to_114_export_excel.py --netlist load_to_114_all_metrics.cir
++```
++
++若只需要 CSV/JSON，不安装 openpyxl 也可运行：
++
++```bash
++python3 load_to_114_export_excel.py --netlist load_to_114_all_metrics.cir --json-only
++```
++
++## 已完成的检查
++
++生成时检查了 16 只 MOS 的连接及尺寸表达式、21 个参数、31 个输入别名、496 个模型字段查询，并复用仓库测试流程验证合成 raw 到 CSV/JSON/XLSX 的导出。九指标测量代码与现有独立测试一致。
++
++这些是结构与导出检查，不是实际电气仿真结果。当前环境没有 ngspice 与 Sky130 PDK，因此真实 DC/AC/瞬态验证需要在服务器上执行上面的命令。
+diff --git a/test/load_to_114_excel/load_to_114_all_metrics.cir b/test/load_to_114_excel/load_to_114_all_metrics.cir
+new file mode 100644
+index 0000000000000000000000000000000000000000..58b281d4cb42927229b6d07c306a06ccf40d2d0c
+--- /dev/null
++++ b/test/load_to_114_excel/load_to_114_all_metrics.cir
+@@ -0,0 +1,1054 @@
++load_to_114 - single-file nine-metric ngspice testbench
++* ============================================================
++* Run: ngspice -b load_to_114_all_metrics.cir
++* Output: load_to_114_metrics.txt, in the current working directory.
++* The output has one CSV header and one row, although its suffix is .txt.
++* DUT and its 21 design parameters are embedded below; no params.sp needed.
++* DC operating point: XDUT_CM, one quiet voltage-follower instance.
++* Also keep load_to_114_export_excel.py in the current working directory.
++* Excel export needs Python 3 and openpyxl: python3 -m pip install openpyxl
++* Additional outputs: load_to_114_dc_operating_point.raw/.csv and load_to_114_results.xlsx.
++* The PDK remains external. Raw DC data is saved before AC/transient analysis.
++* Edit the PDK path, TEST CONDITIONS and DESIGN PARAMETERS before use.
++* Example dimensions below are not a verified golden point.
++*
++* Metric definitions follow the repository's single-ended-opamp benches:
++* gain: inverting-input AC injection, corrected for input sign, at 1 Hz;
++* UGF/PM: first falling unity-loop-gain crossing in the SAME AC sweep;
++* CMRR: reconstructed |ADM/ACM|, at 1 Hz;
++* PSRR: unity-follower rail rejection, at 1 Hz (repository convention);
++* SR: average 10%-90% settled OUTPUT transition slope, positive V/us;
++* power: DC rail power of ONE quiet follower instance, in uW.
++* Missing crossings/transitions are written as nan, never as zero.
++* Negative dB values and negative phase margins are retained.
++* ============================================================
++
++.param mc_mm_switch=0 mc_pr_switch=0
++.lib "/share/home/202411094934/python_project/pdk/sky130A/libs.tech/ngspice/sky130.lib.spice" tt
++.option scale=1u
++.options numdgt=15
++.temp 27
++
++* --------------------- TEST CONDITIONS -----------------------
++* W/L use um, current uses A, capacitor value uses F.
++.param SUPPLY_VDD=1.8 SUPPLY_VSS=0.0 INPUT_VCM=0.72 LOAD_C=1p
++.param AC_DENSITY=100 AC_START_HZ=0.1 AC_STOP_HZ=50e9 REF_HZ=1
++.param SR_LOW=0.7 SR_HIGH=1.1 SR_DELAY=1u
++.param SR_INPUT_TR=1n SR_INPUT_TF=1n SR_WIDTH=4u SR_PERIOD=10u
++.param TRAN_STEP=1n TRAN_STOP=12u TRAN_MAX_STEP=1n
++.param LOW_AVG_START=0.2u LOW_AVG_STOP=0.8u
++.param HIGH_AVG_START=3u HIGH_AVG_STOP=4u
++.param RISE_WINDOW_START=0.9u RISE_WINDOW_END=4.9u
++.param FALL_WINDOW_START=4.9u FALL_WINDOW_END=10.9u
++.param MIN_OUTPUT_SWING=1e-6
++
++* Copy .param values into control-language constants.
++.csparam cfg_ac_density={AC_DENSITY}
++.csparam cfg_ac_start={AC_START_HZ}
++.csparam cfg_ac_stop={AC_STOP_HZ}
++.csparam cfg_ref_hz={REF_HZ}
++.csparam cfg_tran_step={TRAN_STEP}
++.csparam cfg_tran_stop={TRAN_STOP}
++.csparam cfg_tran_max_step={TRAN_MAX_STEP}
++.csparam cfg_low_start={LOW_AVG_START}
++.csparam cfg_low_stop={LOW_AVG_STOP}
++.csparam cfg_high_start={HIGH_AVG_START}
++.csparam cfg_high_stop={HIGH_AVG_STOP}
++.csparam cfg_rise_start={RISE_WINDOW_START}
++.csparam cfg_rise_end={RISE_WINDOW_END}
++.csparam cfg_fall_start={FALL_WINDOW_START}
++.csparam cfg_fall_end={FALL_WINDOW_END}
++.csparam cfg_min_swing={MIN_OUTPUT_SWING}
++
++* -------------------- DESIGN PARAMETERS ----------------------
++* Independent snapshot of the 21-parameter load_to_114 netlist.
++* Harness test format: main ab6aad06c1e254a485b50d5b02d8b6267839a4a1.
++* load_to_114 itself has not yet been committed in that revision.
++* DUT source SHA256: f3a65f7bf63b554c4da5725a8f4351a7503f36173e703f254c47ec332ff542da
++* W/L: um; M: positive integer; CCOMP_F: F; IBIAS_A: A.
++* Default sizes are unverified starting values. Edit this snapshot here.
++
++* ============================================================
++* load_to_114_params.sp
++*
++* W/L     : um, without a u suffix
++* M       : dimensionless positive integer
++* CCOMP_F : F
++* IBIAS_A : A
++*
++* 21 independent parameters:
++*   8 W + 8 L + 3 M + CCOMP_F + IBIAS_A
++* Initial sizing values, not sampling limits.
++* Equal initial values do not bind independent parameters.
++* ============================================================
++
++* NMOS reference mirror: XNM1 / XNM7.
++.param DESVAR_W1=2
++.param DESVAR_L1=1
++
++* PMOS reference mirror: XPM5 / XPM17 / XPM18.
++.param DESVAR_W2=4
++.param DESVAR_L2=1
++
++* Tail reference, tail and output sink: XNM2 / XNM10 / XNM8.
++* W3/L3 remains independent of W1/L1.
++.param DESVAR_W3=2
++.param DESVAR_L3=1
++
++* Matched input differential pair: XNM12 / XNM13.
++.param DESVAR_W4=8
++.param DESVAR_L4=0.5
++
++* Matched NMOS cascode pair: XNM11 / XNM9.
++.param DESVAR_W5=8
++.param DESVAR_L5=0.5
++
++* First-stage PMOS mirror load: XPM6 / XPM16.
++.param DESVAR_W6=4
++.param DESVAR_L6=1
++
++* PMOS second-stage device: XPM15.
++.param DESVAR_W7=8
++.param DESVAR_L7=1
++
++* Independent cascode-bias device: XNM4.
++.param DESVAR_W8=0.5
++.param DESVAR_L8=1
++
++* Input-stage branch multiplier; the tail uses 1+2*M1.
++.param DESVAR_M1=1
++
++* Additional second-stage multiplier; XPM15/XNM8 use M1*M2.
++.param DESVAR_M2=4
++
++* Cascode-bias device multiplier; not a branch-current multiplier.
++.param DESVAR_M3=1
++
++* Miller compensation capacitor: 1 pF.
++.param CCOMP_F=1e-12
++
++* Reference current: 1 uA.
++.param IBIAS_A=1e-6
++
++* Resolved numeric inputs for the DC export; do not edit these aliases.
++.csparam export_desvar_w1={DESVAR_W1}
++.csparam export_desvar_l1={DESVAR_L1}
++.csparam export_desvar_w2={DESVAR_W2}
++.csparam export_desvar_l2={DESVAR_L2}
++.csparam export_desvar_w3={DESVAR_W3}
++.csparam export_desvar_l3={DESVAR_L3}
++.csparam export_desvar_w4={DESVAR_W4}
++.csparam export_desvar_l4={DESVAR_L4}
++.csparam export_desvar_w5={DESVAR_W5}
++.csparam export_desvar_l5={DESVAR_L5}
++.csparam export_desvar_w6={DESVAR_W6}
++.csparam export_desvar_l6={DESVAR_L6}
++.csparam export_desvar_w7={DESVAR_W7}
++.csparam export_desvar_l7={DESVAR_L7}
++.csparam export_desvar_w8={DESVAR_W8}
++.csparam export_desvar_l8={DESVAR_L8}
++.csparam export_desvar_m1={DESVAR_M1}
++.csparam export_desvar_m2={DESVAR_M2}
++.csparam export_desvar_m3={DESVAR_M3}
++.csparam export_ccomp_f={CCOMP_F}
++.csparam export_ibias_a={IBIAS_A}
++.csparam export_supply_vdd={SUPPLY_VDD}
++.csparam export_supply_vss={SUPPLY_VSS}
++.csparam export_input_vcm={INPUT_VCM}
++.csparam export_load_c={LOAD_C}
++.csparam export_ac_density={AC_DENSITY}
++.csparam export_ac_start_hz={AC_START_HZ}
++.csparam export_ac_stop_hz={AC_STOP_HZ}
++.csparam export_ref_hz={REF_HZ}
++.csparam export_sr_low={SR_LOW}
++.csparam export_sr_high={SR_HIGH}
++
++* DUT connectivity, sizing expressions and model names match the source.
++.subckt DUT VINP VINN VOUT VDD VSS
++
++* Reference current injected into the diode-connected NMOS.
++IBIAS_SRC VDD VBIAS DC {IBIAS_A}
++
++* NMOS reference mirror.
++XNM1 VBIAS VBIAS VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W1} L={DESVAR_L1} m=1
++XNM7 N7 VBIAS VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W1} L={DESVAR_L1} m=1
++
++* PMOS reference mirror: equal nominal branch currents.
++XPM5 N7 N7 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W2} L={DESVAR_L2} m=1
++XPM17 N2 N7 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W2} L={DESVAR_L2} m=1
++XPM18 N0 N7 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W2} L={DESVAR_L2} m=1
++
++* Tail-current reference and mirror.
++* The tail sinks the cascode-bias current plus both input currents.
++XNM2 N2 N2 VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W3} L={DESVAR_L3} m=1
++XNM10 N1 N2 VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W3} L={DESVAR_L3} m={1+2*DESVAR_M1}
++
++* Independently sized cascode-bias device.
++* M3 changes the bias voltage; XPM18 supplies the branch current.
++XNM4 N0 N0 N1 VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W8} L={DESVAR_L8} m={DESVAR_M3}
++
++* Matched input differential pair.
++XNM12 N4 VINN N1 VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W4} L={DESVAR_L4} m={DESVAR_M1}
++XNM13 N6 VINP N1 VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W4} L={DESVAR_L4} m={DESVAR_M1}
++
++* Matched NMOS cascode pair.
++XNM11 N3 N0 N4 VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W5} L={DESVAR_L5} m={DESVAR_M1}
++XNM9 N5 N0 N6 VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W5} L={DESVAR_L5} m={DESVAR_M1}
++
++* First-stage PMOS current-mirror load.
++XPM6 N3 N3 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W6} L={DESVAR_L6} m={DESVAR_M1}
++XPM16 N5 N3 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W6} L={DESVAR_L6} m={DESVAR_M1}
++
++* Second stage: PMOS common-source device and NMOS current sink.
++* XNM8 intentionally retains W3/L3 with its gate at VBIAS.
++* Its mirror ratio also depends on (W3/L3)/(W1/L1).
++XPM15 VOUT N5 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W7} L={DESVAR_L7} m={DESVAR_M2*DESVAR_M1}
++XNM8 VOUT VBIAS VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W3} L={DESVAR_L3} m={DESVAR_M2*DESVAR_M1}
++
++* Miller compensation; capacitance is in farads.
++CC0 N5 VOUT {CCOMP_F}
++
++.ends DUT
++
++* -------- AC GAIN / UGF / PM: DC feedback, AC injection --------
++VDD_DM VDD_DM 0 DC {SUPPLY_VDD}
++VSS_DM VSS_DM 0 DC {SUPPLY_VSS}
++VINP_DM INP_DM 0 DC {INPUT_VCM}
++VINJ_DM SIGNAL_DM 0 DC {INPUT_VCM} AC 1
++LFB_DM OUT_DM INN_DM 1T
++CINJ_DM INN_DM SIGNAL_DM 1T
++XDUT_DM INP_DM INN_DM OUT_DM VDD_DM VSS_DM DUT
++CLOAD_DM OUT_DM VSS_DM {LOAD_C}
++
++* -------- CMRR: common-mode injection in a DC follower ---------
++* This instance also supplies the single-DUT DC power measurement.
++VDD_Q VDD_Q 0 DC {SUPPLY_VDD}
++VSS_Q VSS_Q 0 DC {SUPPLY_VSS}
++VCM_Q CM_DC 0 DC {INPUT_VCM}
++VCMAC_P INP_CM CM_DC DC 0 AC 1
++VCMAC_N INN_CM OUT_CM DC 0 AC 1
++XDUT_CM INP_CM INN_CM OUT_CM VDD_Q VSS_Q DUT
++CLOAD_CM OUT_CM VSS_Q {LOAD_C}
++
++* ------------------ POSITIVE-SUPPLY PSRR ----------------------
++VDD_P VDD_P 0 DC {SUPPLY_VDD} AC 1
++VSS_P VSS_P 0 DC {SUPPLY_VSS}
++VINP_P INP_P 0 DC {INPUT_VCM}
++XDUT_P INP_P OUT_P OUT_P VDD_P VSS_P DUT
++CLOAD_P OUT_P 0 {LOAD_C}
++
++* ------------------ NEGATIVE-SUPPLY PSRR ----------------------
++VDD_N VDD_N 0 DC {SUPPLY_VDD}
++VSS_N VSS_N 0 DC {SUPPLY_VSS} AC 1
++VINP_N INP_N 0 DC {INPUT_VCM}
++XDUT_N INP_N OUT_N OUT_N VDD_N VSS_N DUT
++CLOAD_N OUT_N 0 {LOAD_C}
++
++* ------------------ TRANSIENT SLEW RATE -----------------------
++VDD_SR VDD_SR 0 DC {SUPPLY_VDD}
++VSS_SR VSS_SR 0 DC {SUPPLY_VSS}
++VIN_SR IN_SR 0 DC {INPUT_VCM} PULSE({SR_LOW} {SR_HIGH} {SR_DELAY} {SR_INPUT_TR} {SR_INPUT_TF} {SR_WIDTH} {SR_PERIOD})
++XDUT_SR IN_SR OUT_SR OUT_SR VDD_SR VSS_SR DUT
++RLOAD_SR OUT_SR 0 1T
++CLOAD_SR OUT_SR 0 {LOAD_C}
++
++.control
++set noaskquit
++set units=radians
++set numdgt=15
++option numdgt=15
++set result_file=load_to_114_metrics.txt
++set m_gain=nan
++set m_ugf=nan
++set m_pm=nan
++set m_cmrr=nan
++set m_psrr_plus=nan
++set m_psrr_minus=nan
++set m_slew_rise=nan
++set m_slew_fall=nan
++set m_power=nan
++
++* Create a result immediately; subsequent stages overwrite the result row.
++echo "DC_Gain_dB,UGF_Hz,Phase_Margin_deg,CMRR_dB,PSRR_Plus_dB,PSRR_Minus_dB,Slew_Rise_V_us,Slew_Fall_V_us,Power_Quiescent_uW" > $result_file
++echo "$m_gain,$m_ugf,$m_pm,$m_cmrr,$m_psrr_plus,$m_psrr_minus,$m_slew_rise,$m_slew_fall,$m_power" >> $result_file
++
++* Quiescent power: VDD_Q/VSS_Q feed only XDUT_CM, not all DUT copies.
++op
++let power_uw=-(v(VDD_Q)*i(VDD_Q)+v(VSS_Q)*i(VSS_Q))*1e6
++set m_power=$&power_uw
++let follower_error_v=v(OUT_CM)-v(INP_CM)
++let dm_cm_bias_difference_v=v(OUT_DM)-v(OUT_CM)
++print power_uw follower_error_v dm_cm_bias_difference_v
++
++
++
++* Capture one quiet follower DC state before any AC/transient sweep.
++* Native currents, conductances, capacitances and charges include m.
++* Signed BSIM capacitance matrix entries are retained.
++set filetype=ascii
++let op_input_desvar_w1=const.export_desvar_w1
++let op_input_desvar_l1=const.export_desvar_l1
++let op_input_desvar_w2=const.export_desvar_w2
++let op_input_desvar_l2=const.export_desvar_l2
++let op_input_desvar_w3=const.export_desvar_w3
++let op_input_desvar_l3=const.export_desvar_l3
++let op_input_desvar_w4=const.export_desvar_w4
++let op_input_desvar_l4=const.export_desvar_l4
++let op_input_desvar_w5=const.export_desvar_w5
++let op_input_desvar_l5=const.export_desvar_l5
++let op_input_desvar_w6=const.export_desvar_w6
++let op_input_desvar_l6=const.export_desvar_l6
++let op_input_desvar_w7=const.export_desvar_w7
++let op_input_desvar_l7=const.export_desvar_l7
++let op_input_desvar_w8=const.export_desvar_w8
++let op_input_desvar_l8=const.export_desvar_l8
++let op_input_desvar_m1=const.export_desvar_m1
++let op_input_desvar_m2=const.export_desvar_m2
++let op_input_desvar_m3=const.export_desvar_m3
++let op_input_ccomp_f=const.export_ccomp_f
++let op_input_ibias_a=const.export_ibias_a
++let op_input_supply_vdd=const.export_supply_vdd
++let op_input_supply_vss=const.export_supply_vss
++let op_input_input_vcm=const.export_input_vcm
++let op_input_load_c=const.export_load_c
++let op_input_ac_density=const.export_ac_density
++let op_input_ac_start_hz=const.export_ac_start_hz
++let op_input_ac_stop_hz=const.export_ac_stop_hz
++let op_input_ref_hz=const.export_ref_hz
++let op_input_sr_low=const.export_sr_low
++let op_input_sr_high=const.export_sr_high
++
++* XNM1: native model state, already including m multiplicity.
++let op_xnm1_w=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[w]
++let op_xnm1_l=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[l]
++let op_xnm1_m=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[m]
++let op_xnm1_id=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[id]
++let op_xnm1_gm=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[gm]
++let op_xnm1_gds=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[gds]
++let op_xnm1_gmbs=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[gmbs]
++let op_xnm1_vth=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[vth]
++let op_xnm1_vdsat=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[vdsat]
++let op_xnm1_cgg=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[cgg]
++let op_xnm1_cgs=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[cgs]
++let op_xnm1_cgd=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[cgd]
++let op_xnm1_cgb=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[cgb]
++let op_xnm1_cdg=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[cdg]
++let op_xnm1_cdd=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[cdd]
++let op_xnm1_cds=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[cds]
++let op_xnm1_cdb=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[cdb]
++let op_xnm1_csg=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[csg]
++let op_xnm1_csd=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[csd]
++let op_xnm1_css=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[css]
++let op_xnm1_csb=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[csb]
++let op_xnm1_cbg=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[cbg]
++let op_xnm1_cbd=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[cbd]
++let op_xnm1_cbs=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[cbs]
++let op_xnm1_cbb=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[cbb]
++let op_xnm1_capbd=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[capbd]
++let op_xnm1_capbs=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[capbs]
++let op_xnm1_qg=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[qg]
++let op_xnm1_qb=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[qb]
++let op_xnm1_qd=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[qd]
++let op_xnm1_qs=@m.xdut_cm.xnm1.msky130_fd_pr__nfet_01v8_lvt[qs]
++
++* XNM7: native model state, already including m multiplicity.
++let op_xnm7_w=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[w]
++let op_xnm7_l=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[l]
++let op_xnm7_m=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[m]
++let op_xnm7_id=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[id]
++let op_xnm7_gm=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[gm]
++let op_xnm7_gds=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[gds]
++let op_xnm7_gmbs=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[gmbs]
++let op_xnm7_vth=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[vth]
++let op_xnm7_vdsat=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[vdsat]
++let op_xnm7_cgg=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cgg]
++let op_xnm7_cgs=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cgs]
++let op_xnm7_cgd=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cgd]
++let op_xnm7_cgb=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cgb]
++let op_xnm7_cdg=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cdg]
++let op_xnm7_cdd=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cdd]
++let op_xnm7_cds=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cds]
++let op_xnm7_cdb=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cdb]
++let op_xnm7_csg=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[csg]
++let op_xnm7_csd=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[csd]
++let op_xnm7_css=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[css]
++let op_xnm7_csb=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[csb]
++let op_xnm7_cbg=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cbg]
++let op_xnm7_cbd=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cbd]
++let op_xnm7_cbs=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cbs]
++let op_xnm7_cbb=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[cbb]
++let op_xnm7_capbd=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[capbd]
++let op_xnm7_capbs=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[capbs]
++let op_xnm7_qg=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[qg]
++let op_xnm7_qb=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[qb]
++let op_xnm7_qd=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[qd]
++let op_xnm7_qs=@m.xdut_cm.xnm7.msky130_fd_pr__nfet_01v8_lvt[qs]
++
++* XPM5: native model state, already including m multiplicity.
++let op_xpm5_w=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[w]
++let op_xpm5_l=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[l]
++let op_xpm5_m=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[m]
++let op_xpm5_id=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[id]
++let op_xpm5_gm=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[gm]
++let op_xpm5_gds=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[gds]
++let op_xpm5_gmbs=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[gmbs]
++let op_xpm5_vth=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[vth]
++let op_xpm5_vdsat=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[vdsat]
++let op_xpm5_cgg=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[cgg]
++let op_xpm5_cgs=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[cgs]
++let op_xpm5_cgd=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[cgd]
++let op_xpm5_cgb=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[cgb]
++let op_xpm5_cdg=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[cdg]
++let op_xpm5_cdd=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[cdd]
++let op_xpm5_cds=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[cds]
++let op_xpm5_cdb=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[cdb]
++let op_xpm5_csg=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[csg]
++let op_xpm5_csd=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[csd]
++let op_xpm5_css=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[css]
++let op_xpm5_csb=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[csb]
++let op_xpm5_cbg=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[cbg]
++let op_xpm5_cbd=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[cbd]
++let op_xpm5_cbs=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[cbs]
++let op_xpm5_cbb=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[cbb]
++let op_xpm5_capbd=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[capbd]
++let op_xpm5_capbs=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[capbs]
++let op_xpm5_qg=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[qg]
++let op_xpm5_qb=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[qb]
++let op_xpm5_qd=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[qd]
++let op_xpm5_qs=@m.xdut_cm.xpm5.msky130_fd_pr__pfet_01v8_lvt[qs]
++
++* XPM17: native model state, already including m multiplicity.
++let op_xpm17_w=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[w]
++let op_xpm17_l=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[l]
++let op_xpm17_m=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[m]
++let op_xpm17_id=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[id]
++let op_xpm17_gm=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[gm]
++let op_xpm17_gds=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[gds]
++let op_xpm17_gmbs=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[gmbs]
++let op_xpm17_vth=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[vth]
++let op_xpm17_vdsat=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[vdsat]
++let op_xpm17_cgg=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[cgg]
++let op_xpm17_cgs=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[cgs]
++let op_xpm17_cgd=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[cgd]
++let op_xpm17_cgb=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[cgb]
++let op_xpm17_cdg=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[cdg]
++let op_xpm17_cdd=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[cdd]
++let op_xpm17_cds=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[cds]
++let op_xpm17_cdb=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[cdb]
++let op_xpm17_csg=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[csg]
++let op_xpm17_csd=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[csd]
++let op_xpm17_css=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[css]
++let op_xpm17_csb=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[csb]
++let op_xpm17_cbg=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[cbg]
++let op_xpm17_cbd=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[cbd]
++let op_xpm17_cbs=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[cbs]
++let op_xpm17_cbb=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[cbb]
++let op_xpm17_capbd=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[capbd]
++let op_xpm17_capbs=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[capbs]
++let op_xpm17_qg=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[qg]
++let op_xpm17_qb=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[qb]
++let op_xpm17_qd=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[qd]
++let op_xpm17_qs=@m.xdut_cm.xpm17.msky130_fd_pr__pfet_01v8_lvt[qs]
++
++* XPM18: native model state, already including m multiplicity.
++let op_xpm18_w=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[w]
++let op_xpm18_l=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[l]
++let op_xpm18_m=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[m]
++let op_xpm18_id=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[id]
++let op_xpm18_gm=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[gm]
++let op_xpm18_gds=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[gds]
++let op_xpm18_gmbs=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[gmbs]
++let op_xpm18_vth=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[vth]
++let op_xpm18_vdsat=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[vdsat]
++let op_xpm18_cgg=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[cgg]
++let op_xpm18_cgs=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[cgs]
++let op_xpm18_cgd=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[cgd]
++let op_xpm18_cgb=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[cgb]
++let op_xpm18_cdg=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[cdg]
++let op_xpm18_cdd=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[cdd]
++let op_xpm18_cds=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[cds]
++let op_xpm18_cdb=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[cdb]
++let op_xpm18_csg=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[csg]
++let op_xpm18_csd=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[csd]
++let op_xpm18_css=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[css]
++let op_xpm18_csb=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[csb]
++let op_xpm18_cbg=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[cbg]
++let op_xpm18_cbd=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[cbd]
++let op_xpm18_cbs=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[cbs]
++let op_xpm18_cbb=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[cbb]
++let op_xpm18_capbd=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[capbd]
++let op_xpm18_capbs=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[capbs]
++let op_xpm18_qg=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[qg]
++let op_xpm18_qb=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[qb]
++let op_xpm18_qd=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[qd]
++let op_xpm18_qs=@m.xdut_cm.xpm18.msky130_fd_pr__pfet_01v8_lvt[qs]
++
++* XNM2: native model state, already including m multiplicity.
++let op_xnm2_w=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[w]
++let op_xnm2_l=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[l]
++let op_xnm2_m=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[m]
++let op_xnm2_id=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[id]
++let op_xnm2_gm=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[gm]
++let op_xnm2_gds=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[gds]
++let op_xnm2_gmbs=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[gmbs]
++let op_xnm2_vth=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[vth]
++let op_xnm2_vdsat=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[vdsat]
++let op_xnm2_cgg=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[cgg]
++let op_xnm2_cgs=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[cgs]
++let op_xnm2_cgd=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[cgd]
++let op_xnm2_cgb=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[cgb]
++let op_xnm2_cdg=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[cdg]
++let op_xnm2_cdd=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[cdd]
++let op_xnm2_cds=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[cds]
++let op_xnm2_cdb=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[cdb]
++let op_xnm2_csg=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[csg]
++let op_xnm2_csd=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[csd]
++let op_xnm2_css=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[css]
++let op_xnm2_csb=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[csb]
++let op_xnm2_cbg=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[cbg]
++let op_xnm2_cbd=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[cbd]
++let op_xnm2_cbs=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[cbs]
++let op_xnm2_cbb=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[cbb]
++let op_xnm2_capbd=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[capbd]
++let op_xnm2_capbs=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[capbs]
++let op_xnm2_qg=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[qg]
++let op_xnm2_qb=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[qb]
++let op_xnm2_qd=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[qd]
++let op_xnm2_qs=@m.xdut_cm.xnm2.msky130_fd_pr__nfet_01v8_lvt[qs]
++
++* XNM10: native model state, already including m multiplicity.
++let op_xnm10_w=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[w]
++let op_xnm10_l=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[l]
++let op_xnm10_m=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[m]
++let op_xnm10_id=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[id]
++let op_xnm10_gm=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[gm]
++let op_xnm10_gds=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[gds]
++let op_xnm10_gmbs=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[gmbs]
++let op_xnm10_vth=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[vth]
++let op_xnm10_vdsat=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[vdsat]
++let op_xnm10_cgg=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cgg]
++let op_xnm10_cgs=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cgs]
++let op_xnm10_cgd=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cgd]
++let op_xnm10_cgb=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cgb]
++let op_xnm10_cdg=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cdg]
++let op_xnm10_cdd=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cdd]
++let op_xnm10_cds=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cds]
++let op_xnm10_cdb=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cdb]
++let op_xnm10_csg=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[csg]
++let op_xnm10_csd=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[csd]
++let op_xnm10_css=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[css]
++let op_xnm10_csb=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[csb]
++let op_xnm10_cbg=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cbg]
++let op_xnm10_cbd=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cbd]
++let op_xnm10_cbs=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cbs]
++let op_xnm10_cbb=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[cbb]
++let op_xnm10_capbd=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[capbd]
++let op_xnm10_capbs=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[capbs]
++let op_xnm10_qg=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[qg]
++let op_xnm10_qb=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[qb]
++let op_xnm10_qd=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[qd]
++let op_xnm10_qs=@m.xdut_cm.xnm10.msky130_fd_pr__nfet_01v8_lvt[qs]
++
++* XNM4: native model state, already including m multiplicity.
++let op_xnm4_w=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[w]
++let op_xnm4_l=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[l]
++let op_xnm4_m=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[m]
++let op_xnm4_id=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[id]
++let op_xnm4_gm=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[gm]
++let op_xnm4_gds=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[gds]
++let op_xnm4_gmbs=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[gmbs]
++let op_xnm4_vth=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[vth]
++let op_xnm4_vdsat=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[vdsat]
++let op_xnm4_cgg=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[cgg]
++let op_xnm4_cgs=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[cgs]
++let op_xnm4_cgd=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[cgd]
++let op_xnm4_cgb=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[cgb]
++let op_xnm4_cdg=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[cdg]
++let op_xnm4_cdd=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[cdd]
++let op_xnm4_cds=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[cds]
++let op_xnm4_cdb=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[cdb]
++let op_xnm4_csg=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[csg]
++let op_xnm4_csd=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[csd]
++let op_xnm4_css=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[css]
++let op_xnm4_csb=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[csb]
++let op_xnm4_cbg=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[cbg]
++let op_xnm4_cbd=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[cbd]
++let op_xnm4_cbs=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[cbs]
++let op_xnm4_cbb=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[cbb]
++let op_xnm4_capbd=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[capbd]
++let op_xnm4_capbs=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[capbs]
++let op_xnm4_qg=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[qg]
++let op_xnm4_qb=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[qb]
++let op_xnm4_qd=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[qd]
++let op_xnm4_qs=@m.xdut_cm.xnm4.msky130_fd_pr__nfet_01v8_lvt[qs]
++
++* XNM12: native model state, already including m multiplicity.
++let op_xnm12_w=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[w]
++let op_xnm12_l=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[l]
++let op_xnm12_m=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[m]
++let op_xnm12_id=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[id]
++let op_xnm12_gm=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[gm]
++let op_xnm12_gds=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[gds]
++let op_xnm12_gmbs=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[gmbs]
++let op_xnm12_vth=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[vth]
++let op_xnm12_vdsat=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[vdsat]
++let op_xnm12_cgg=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[cgg]
++let op_xnm12_cgs=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[cgs]
++let op_xnm12_cgd=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[cgd]
++let op_xnm12_cgb=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[cgb]
++let op_xnm12_cdg=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[cdg]
++let op_xnm12_cdd=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[cdd]
++let op_xnm12_cds=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[cds]
++let op_xnm12_cdb=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[cdb]
++let op_xnm12_csg=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[csg]
++let op_xnm12_csd=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[csd]
++let op_xnm12_css=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[css]
++let op_xnm12_csb=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[csb]
++let op_xnm12_cbg=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[cbg]
++let op_xnm12_cbd=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[cbd]
++let op_xnm12_cbs=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[cbs]
++let op_xnm12_cbb=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[cbb]
++let op_xnm12_capbd=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[capbd]
++let op_xnm12_capbs=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[capbs]
++let op_xnm12_qg=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[qg]
++let op_xnm12_qb=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[qb]
++let op_xnm12_qd=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[qd]
++let op_xnm12_qs=@m.xdut_cm.xnm12.msky130_fd_pr__nfet_01v8_lvt[qs]
++
++* XNM13: native model state, already including m multiplicity.
++let op_xnm13_w=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[w]
++let op_xnm13_l=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[l]
++let op_xnm13_m=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[m]
++let op_xnm13_id=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[id]
++let op_xnm13_gm=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[gm]
++let op_xnm13_gds=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[gds]
++let op_xnm13_gmbs=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[gmbs]
++let op_xnm13_vth=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[vth]
++let op_xnm13_vdsat=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[vdsat]
++let op_xnm13_cgg=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[cgg]
++let op_xnm13_cgs=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[cgs]
++let op_xnm13_cgd=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[cgd]
++let op_xnm13_cgb=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[cgb]
++let op_xnm13_cdg=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[cdg]
++let op_xnm13_cdd=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[cdd]
++let op_xnm13_cds=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[cds]
++let op_xnm13_cdb=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[cdb]
++let op_xnm13_csg=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[csg]
++let op_xnm13_csd=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[csd]
++let op_xnm13_css=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[css]
++let op_xnm13_csb=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[csb]
++let op_xnm13_cbg=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[cbg]
++let op_xnm13_cbd=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[cbd]
++let op_xnm13_cbs=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[cbs]
++let op_xnm13_cbb=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[cbb]
++let op_xnm13_capbd=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[capbd]
++let op_xnm13_capbs=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[capbs]
++let op_xnm13_qg=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[qg]
++let op_xnm13_qb=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[qb]
++let op_xnm13_qd=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[qd]
++let op_xnm13_qs=@m.xdut_cm.xnm13.msky130_fd_pr__nfet_01v8_lvt[qs]
++
++* XNM11: native model state, already including m multiplicity.
++let op_xnm11_w=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[w]
++let op_xnm11_l=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[l]
++let op_xnm11_m=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[m]
++let op_xnm11_id=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[id]
++let op_xnm11_gm=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[gm]
++let op_xnm11_gds=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[gds]
++let op_xnm11_gmbs=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[gmbs]
++let op_xnm11_vth=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[vth]
++let op_xnm11_vdsat=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[vdsat]
++let op_xnm11_cgg=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[cgg]
++let op_xnm11_cgs=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[cgs]
++let op_xnm11_cgd=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[cgd]
++let op_xnm11_cgb=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[cgb]
++let op_xnm11_cdg=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[cdg]
++let op_xnm11_cdd=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[cdd]
++let op_xnm11_cds=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[cds]
++let op_xnm11_cdb=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[cdb]
++let op_xnm11_csg=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[csg]
++let op_xnm11_csd=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[csd]
++let op_xnm11_css=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[css]
++let op_xnm11_csb=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[csb]
++let op_xnm11_cbg=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[cbg]
++let op_xnm11_cbd=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[cbd]
++let op_xnm11_cbs=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[cbs]
++let op_xnm11_cbb=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[cbb]
++let op_xnm11_capbd=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[capbd]
++let op_xnm11_capbs=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[capbs]
++let op_xnm11_qg=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[qg]
++let op_xnm11_qb=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[qb]
++let op_xnm11_qd=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[qd]
++let op_xnm11_qs=@m.xdut_cm.xnm11.msky130_fd_pr__nfet_01v8_lvt[qs]
++
++* XNM9: native model state, already including m multiplicity.
++let op_xnm9_w=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[w]
++let op_xnm9_l=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[l]
++let op_xnm9_m=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[m]
++let op_xnm9_id=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[id]
++let op_xnm9_gm=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[gm]
++let op_xnm9_gds=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[gds]
++let op_xnm9_gmbs=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[gmbs]
++let op_xnm9_vth=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[vth]
++let op_xnm9_vdsat=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[vdsat]
++let op_xnm9_cgg=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cgg]
++let op_xnm9_cgs=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cgs]
++let op_xnm9_cgd=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cgd]
++let op_xnm9_cgb=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cgb]
++let op_xnm9_cdg=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cdg]
++let op_xnm9_cdd=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cdd]
++let op_xnm9_cds=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cds]
++let op_xnm9_cdb=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cdb]
++let op_xnm9_csg=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[csg]
++let op_xnm9_csd=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[csd]
++let op_xnm9_css=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[css]
++let op_xnm9_csb=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[csb]
++let op_xnm9_cbg=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cbg]
++let op_xnm9_cbd=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cbd]
++let op_xnm9_cbs=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cbs]
++let op_xnm9_cbb=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[cbb]
++let op_xnm9_capbd=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[capbd]
++let op_xnm9_capbs=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[capbs]
++let op_xnm9_qg=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[qg]
++let op_xnm9_qb=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[qb]
++let op_xnm9_qd=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[qd]
++let op_xnm9_qs=@m.xdut_cm.xnm9.msky130_fd_pr__nfet_01v8_lvt[qs]
++
++* XPM6: native model state, already including m multiplicity.
++let op_xpm6_w=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[w]
++let op_xpm6_l=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[l]
++let op_xpm6_m=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[m]
++let op_xpm6_id=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[id]
++let op_xpm6_gm=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[gm]
++let op_xpm6_gds=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[gds]
++let op_xpm6_gmbs=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[gmbs]
++let op_xpm6_vth=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[vth]
++let op_xpm6_vdsat=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[vdsat]
++let op_xpm6_cgg=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[cgg]
++let op_xpm6_cgs=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[cgs]
++let op_xpm6_cgd=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[cgd]
++let op_xpm6_cgb=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[cgb]
++let op_xpm6_cdg=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[cdg]
++let op_xpm6_cdd=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[cdd]
++let op_xpm6_cds=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[cds]
++let op_xpm6_cdb=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[cdb]
++let op_xpm6_csg=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[csg]
++let op_xpm6_csd=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[csd]
++let op_xpm6_css=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[css]
++let op_xpm6_csb=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[csb]
++let op_xpm6_cbg=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[cbg]
++let op_xpm6_cbd=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[cbd]
++let op_xpm6_cbs=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[cbs]
++let op_xpm6_cbb=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[cbb]
++let op_xpm6_capbd=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[capbd]
++let op_xpm6_capbs=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[capbs]
++let op_xpm6_qg=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[qg]
++let op_xpm6_qb=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[qb]
++let op_xpm6_qd=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[qd]
++let op_xpm6_qs=@m.xdut_cm.xpm6.msky130_fd_pr__pfet_01v8_lvt[qs]
++
++* XPM16: native model state, already including m multiplicity.
++let op_xpm16_w=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[w]
++let op_xpm16_l=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[l]
++let op_xpm16_m=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[m]
++let op_xpm16_id=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[id]
++let op_xpm16_gm=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[gm]
++let op_xpm16_gds=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[gds]
++let op_xpm16_gmbs=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[gmbs]
++let op_xpm16_vth=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[vth]
++let op_xpm16_vdsat=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[vdsat]
++let op_xpm16_cgg=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[cgg]
++let op_xpm16_cgs=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[cgs]
++let op_xpm16_cgd=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[cgd]
++let op_xpm16_cgb=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[cgb]
++let op_xpm16_cdg=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[cdg]
++let op_xpm16_cdd=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[cdd]
++let op_xpm16_cds=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[cds]
++let op_xpm16_cdb=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[cdb]
++let op_xpm16_csg=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[csg]
++let op_xpm16_csd=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[csd]
++let op_xpm16_css=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[css]
++let op_xpm16_csb=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[csb]
++let op_xpm16_cbg=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[cbg]
++let op_xpm16_cbd=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[cbd]
++let op_xpm16_cbs=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[cbs]
++let op_xpm16_cbb=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[cbb]
++let op_xpm16_capbd=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[capbd]
++let op_xpm16_capbs=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[capbs]
++let op_xpm16_qg=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[qg]
++let op_xpm16_qb=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[qb]
++let op_xpm16_qd=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[qd]
++let op_xpm16_qs=@m.xdut_cm.xpm16.msky130_fd_pr__pfet_01v8_lvt[qs]
++
++* XPM15: native model state, already including m multiplicity.
++let op_xpm15_w=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[w]
++let op_xpm15_l=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[l]
++let op_xpm15_m=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[m]
++let op_xpm15_id=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[id]
++let op_xpm15_gm=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[gm]
++let op_xpm15_gds=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[gds]
++let op_xpm15_gmbs=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[gmbs]
++let op_xpm15_vth=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[vth]
++let op_xpm15_vdsat=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[vdsat]
++let op_xpm15_cgg=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[cgg]
++let op_xpm15_cgs=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[cgs]
++let op_xpm15_cgd=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[cgd]
++let op_xpm15_cgb=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[cgb]
++let op_xpm15_cdg=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[cdg]
++let op_xpm15_cdd=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[cdd]
++let op_xpm15_cds=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[cds]
++let op_xpm15_cdb=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[cdb]
++let op_xpm15_csg=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[csg]
++let op_xpm15_csd=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[csd]
++let op_xpm15_css=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[css]
++let op_xpm15_csb=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[csb]
++let op_xpm15_cbg=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[cbg]
++let op_xpm15_cbd=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[cbd]
++let op_xpm15_cbs=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[cbs]
++let op_xpm15_cbb=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[cbb]
++let op_xpm15_capbd=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[capbd]
++let op_xpm15_capbs=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[capbs]
++let op_xpm15_qg=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[qg]
++let op_xpm15_qb=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[qb]
++let op_xpm15_qd=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[qd]
++let op_xpm15_qs=@m.xdut_cm.xpm15.msky130_fd_pr__pfet_01v8_lvt[qs]
++
++* XNM8: native model state, already including m multiplicity.
++let op_xnm8_w=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[w]
++let op_xnm8_l=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[l]
++let op_xnm8_m=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[m]
++let op_xnm8_id=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[id]
++let op_xnm8_gm=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[gm]
++let op_xnm8_gds=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[gds]
++let op_xnm8_gmbs=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[gmbs]
++let op_xnm8_vth=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[vth]
++let op_xnm8_vdsat=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[vdsat]
++let op_xnm8_cgg=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cgg]
++let op_xnm8_cgs=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cgs]
++let op_xnm8_cgd=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cgd]
++let op_xnm8_cgb=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cgb]
++let op_xnm8_cdg=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cdg]
++let op_xnm8_cdd=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cdd]
++let op_xnm8_cds=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cds]
++let op_xnm8_cdb=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cdb]
++let op_xnm8_csg=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[csg]
++let op_xnm8_csd=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[csd]
++let op_xnm8_css=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[css]
++let op_xnm8_csb=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[csb]
++let op_xnm8_cbg=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cbg]
++let op_xnm8_cbd=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cbd]
++let op_xnm8_cbs=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cbs]
++let op_xnm8_cbb=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[cbb]
++let op_xnm8_capbd=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[capbd]
++let op_xnm8_capbs=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[capbs]
++let op_xnm8_qg=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[qg]
++let op_xnm8_qb=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[qb]
++let op_xnm8_qd=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[qd]
++let op_xnm8_qs=@m.xdut_cm.xnm8.msky130_fd_pr__nfet_01v8_lvt[qs]
++
++* Full precision is kept in this ASCII raw file, not in echo-expanded strings.
++write load_to_114_dc_operating_point.raw all
++echo DC operating point saved to load_to_114_dc_operating_point.raw
++* Free the exported snapshot before AC/tran; configured constants survive.
++* No subsequent metric calculation needs a live DC vector from this plot.
++destroy $curplot
++
++* One AC sweep supplies every AC metric; UGF and PM share one crossing.
++ac dec $&cfg_ac_density $&cfg_ac_start $&cfg_ac_stop
++let inverting_gain=-v(OUT_DM)/v(INN_DM)
++let gain_mag=mag(inverting_gain)
++let phase_deg=180/pi*cph(inverting_gain)
++let phase_origin=phase_deg[0]
++* Anchor the continuous phase near its low-frequency branch.
++while phase_origin > 180
++    let phase_deg=phase_deg-360
++    let phase_origin=phase_origin-360
++end
++while phase_origin < -180
++    let phase_deg=phase_deg+360
++    let phase_origin=phase_origin+360
++end
++meas ac gain_ref_mag FIND gain_mag AT=$&cfg_ref_hz
++if gain_ref_mag > 0
++    let dc_gain_db=20*log10(gain_ref_mag)
++    set m_gain=$&dc_gain_db
++else
++    set m_gain=-inf
++end
++
++* Find the first FALLING crossing, then interpolate BOTH metrics in log(f).
++* This avoids attempting meas on a missing crossing and preserves nan.
++let ac_index=1
++let first_fall=-1
++let falling_crossings=0
++let ac_count=length(frequency)
++while ac_index < ac_count
++    if gain_mag[ac_index-1] >= 1
++        if gain_mag[ac_index] < 1
++            let falling_crossings=falling_crossings+1
++            if first_fall < 0
++                let first_fall=ac_index
++            end
++        end
++    end
++    let ac_index=ac_index+1
++end
++if first_fall > 0
++    let i_hi=first_fall
++    let i_lo=first_fall-1
++    if gain_mag[i_hi] > 0
++        let db_lo=20*log10(gain_mag[i_lo])
++        let db_hi=20*log10(gain_mag[i_hi])
++        let fraction=-db_lo/(db_hi-db_lo)
++        let ugf_hz=exp(log(frequency[i_lo])+fraction*(log(frequency[i_hi])-log(frequency[i_lo])))
++        set m_ugf=$&ugf_hz
++        if real(inverting_gain[0]) > 0
++            let phase_at_ugf_deg=phase_deg[i_lo]+fraction*(phase_deg[i_hi]-phase_deg[i_lo])
++            let phase_margin_deg=180+phase_at_ugf_deg
++            set m_pm=$&phase_margin_deg
++        else
++            echo PM unavailable: low-frequency loop polarity is not negative feedback.
++        end
++    end
++else
++    echo UGF/PM unavailable: no falling unity-gain crossing in the configured sweep.
++end
++print falling_crossings
++
++* CMRR: Vout=gp*VinP+gn*VinN; G=-gn, H=(gp+gn)/(1+G).
++* Hence ACM=H*(1+G), ADM=G+ACM/2, CMRR=|ADM/ACM|.
++let common_ripple=v(INP_CM)-v(CM_DC)
++let closed_cm_transfer=v(OUT_CM)/common_ripple
++let acm=closed_cm_transfer*(1+inverting_gain)
++let adm=inverting_gain+0.5*acm
++let adm_mag=mag(adm)
++let acm_mag=mag(acm)
++meas ac adm_ref_mag FIND adm_mag AT=$&cfg_ref_hz
++meas ac acm_ref_mag FIND acm_mag AT=$&cfg_ref_hz
++if adm_ref_mag > 0
++    if acm_ref_mag > 0
++        let cmrr_db=20*log10(adm_ref_mag/acm_ref_mag)
++        set m_cmrr=$&cmrr_db
++    else
++        set m_cmrr=inf
++    end
++end
++
++* PSRR follows the repository's follower-rejection convention.
++let plus_output_mag=mag(v(INP_P)-v(OUT_P))
++let minus_output_mag=mag(v(INP_N)-v(OUT_N))
++let plus_rail_mag=mag(v(VDD_P))
++let minus_rail_mag=mag(v(VSS_N))
++meas ac plus_out_ref FIND plus_output_mag AT=$&cfg_ref_hz
++meas ac minus_out_ref FIND minus_output_mag AT=$&cfg_ref_hz
++meas ac plus_rail_ref FIND plus_rail_mag AT=$&cfg_ref_hz
++meas ac minus_rail_ref FIND minus_rail_mag AT=$&cfg_ref_hz
++if plus_out_ref > 0
++    let psrr_plus_db=20*log10(plus_rail_ref/plus_out_ref)
++    set m_psrr_plus=$&psrr_plus_db
++else
++    set m_psrr_plus=inf
++end
++if minus_out_ref > 0
++    let psrr_minus_db=20*log10(minus_rail_ref/minus_out_ref)
++    set m_psrr_minus=$&psrr_minus_db
++else
++    set m_psrr_minus=inf
++end
++
++* Save completed DC/AC metrics before starting the transient analysis.
++echo "DC_Gain_dB,UGF_Hz,Phase_Margin_deg,CMRR_dB,PSRR_Plus_dB,PSRR_Minus_dB,Slew_Rise_V_us,Slew_Fall_V_us,Power_Quiescent_uW" > $result_file
++echo "$m_gain,$m_ugf,$m_pm,$m_cmrr,$m_psrr_plus,$m_psrr_minus,$m_slew_rise,$m_slew_fall,$m_power" >> $result_file
++
++tran $&cfg_tran_step $&cfg_tran_stop 0 $&cfg_tran_max_step
++let sr_output=v(OUT_SR)
++meas tran output_low AVG v(OUT_SR) FROM=$&cfg_low_start TO=$&cfg_low_stop
++meas tran output_high AVG v(OUT_SR) FROM=$&cfg_high_start TO=$&cfg_high_stop
++let output_swing=output_high-output_low
++let rise_t10=-1
++let rise_t90=-1
++let fall_t90=-1
++let fall_t10=-1
++
++if output_swing > cfg_min_swing
++    let level10=output_low+0.1*output_swing
++    let level90=output_low+0.9*output_swing
++    let tr_index=1
++    let tr_count=length(time)
++    * Restrict both ends of each crossing interval to its FIRST-edge window.
++    * Subsequent pulse periods cannot accidentally complete a missing edge.
++    while tr_index < tr_count
++        let v_before=sr_output[tr_index-1]
++        let v_after=sr_output[tr_index]
++        let t_before=time[tr_index-1]
++        let t_after=time[tr_index]
++        if t_before >= cfg_rise_start
++            if t_after <= cfg_rise_end
++                if v_after > v_before
++                    if rise_t10 < 0
++                        if v_before <= level10
++                            if v_after > level10
++                                let rise_t10=t_before+(level10-v_before)*(t_after-t_before)/(v_after-v_before)
++                            end
++                        end
++                    end
++                    if rise_t90 < 0
++                        if v_before <= level90
++                            if v_after > level90
++                                let rise_t90=t_before+(level90-v_before)*(t_after-t_before)/(v_after-v_before)
++                            end
++                        end
++                    end
++                end
++            end
++        end
++        if t_before >= cfg_fall_start
++            if t_after <= cfg_fall_end
++                if v_after < v_before
++                    if fall_t90 < 0
++                        if v_before >= level90
++                            if v_after < level90
++                                let fall_t90=t_before+(level90-v_before)*(t_after-t_before)/(v_after-v_before)
++                            end
++                        end
++                    end
++                    if fall_t10 < 0
++                        if v_before >= level10
++                            if v_after < level10
++                                let fall_t10=t_before+(level10-v_before)*(t_after-t_before)/(v_after-v_before)
++                            end
++                        end
++                    end
++                end
++            end
++        end
++        let tr_index=tr_index+1
++    end
++    if rise_t10 >= 0
++        if rise_t90 > rise_t10
++            let slew_rise_v_us=0.8*output_swing/(rise_t90-rise_t10)/1e6
++            set m_slew_rise=$&slew_rise_v_us
++        end
++    end
++    if fall_t90 >= 0
++        if fall_t10 > fall_t90
++            let slew_fall_v_us=0.8*output_swing/(fall_t10-fall_t90)/1e6
++            set m_slew_fall=$&slew_fall_v_us
++        end
++    end
++else
++    echo SR unavailable: reversed or negligible settled output swing.
++end
++print output_low output_high output_swing rise_t10 rise_t90 fall_t90 fall_t10
++
++* Final result: exactly one header and one nine-column row.
++echo "DC_Gain_dB,UGF_Hz,Phase_Margin_deg,CMRR_dB,PSRR_Plus_dB,PSRR_Minus_dB,Slew_Rise_V_us,Slew_Fall_V_us,Power_Quiescent_uW" > $result_file
++echo "$m_gain,$m_ugf,$m_pm,$m_cmrr,$m_psrr_plus,$m_psrr_minus,$m_slew_rise,$m_slew_fall,$m_power" >> $result_file
++echo Results saved to $result_file
++* Python creates the Excel workbook and a one-design-point WIDE CSV.
++* The matching exporter validates all 16 MOS devices and 21 design inputs.
++* If Python/openpyxl is unavailable, the raw DC file and metrics TXT remain usable.
++shell python3 load_to_114_export_excel.py --netlist load_to_114_all_metrics.cir
++quit
++.endc
++.end
+\ No newline at end of file
+diff --git a/test/load_to_114_excel/load_to_114_export_excel.py b/test/load_to_114_excel/load_to_114_export_excel.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..45d19983790161bc01c0797fe7c31b063023cacd
+--- /dev/null
++++ b/test/load_to_114_excel/load_to_114_export_excel.py
+@@ -0,0 +1,1056 @@
++#!/usr/bin/env python3
++"""Export the single DC snapshot from load_to_114_all_metrics.cir to Excel.
++
++ngspice invokes this script after writing the nine-metric result.
++Run it manually to recover Excel from an already completed simulation.
++The raw parser and CSV/JSON paths use only the Python standard library.
++The portable user-environment XLSX writer requires openpyxl.
++"""
++
++from __future__ import annotations
++
++import argparse
++import csv
++import json
++import math
++import os
++from pathlib import Path
++import re
++import sys
++import tempfile
++
++
++METRICS = (
++    ("DC_Gain_dB", "dB"),
++    ("UGF_Hz", "Hz"),
++    ("Phase_Margin_deg", "deg"),
++    ("CMRR_dB", "dB"),
++    ("PSRR_Plus_dB", "dB"),
++    ("PSRR_Minus_dB", "dB"),
++    ("Slew_Rise_V_us", "V/us"),
++    ("Slew_Fall_V_us", "V/us"),
++    ("Power_Quiescent_uW", "uW"),
++)
++
++CAPS = (
++    "cgg", "cgs", "cgd", "cgb",
++    "cdg", "cdd", "cds", "cdb",
++    "csg", "csd", "css", "csb",
++    "cbg", "cbd", "cbs", "cbb",
++    "capbd", "capbs",
++)
++
++CHARGES = ("qg", "qb", "qd", "qs")
++
++CORE = (
++    "w", "l", "m", "id", "gm",
++    "gds", "gmbs", "vth", "vdsat",
++)
++
++DC_HEADERS = (
++    "Device",
++    "MOS_Type",
++    "Model",
++    "D_Node",
++    "G_Node",
++    "S_Node",
++    "B_Node",
++    "W_um",
++    "L_um",
++    "M",
++    "VD_V",
++    "VG_V",
++    "VS_V",
++    "VB_V",
++    "VGS_V",
++    "VDS_V",
++    "VBS_V",
++    "Id_model_A",
++    "gm_S",
++    "gds_S",
++    "gmbs_S",
++    "Vth_model_V",
++    "Vdsat_model_V",
++    "gm_over_Id_per_V",
++    "gm_over_gds",
++    "ro_Ohm",
++    "VDS_oriented_V",
++    "Vov_est_V",
++    "Saturation_margin_V",
++)
++
++CAP_HEADERS = (
++    ("Device", "MOS_Type", "M")
++    + tuple(q + "_F" for q in CAPS)
++    + tuple(q + "_C" for q in CHARGES)
++)
++
++# Circuit-specific input schema; all values come from the solved DC raw file.
++PARAMETER_UNITS = {
++    'DESVAR_W1': 'um',
++    'DESVAR_L1': 'um',
++    'DESVAR_W2': 'um',
++    'DESVAR_L2': 'um',
++    'DESVAR_W3': 'um',
++    'DESVAR_L3': 'um',
++    'DESVAR_W4': 'um',
++    'DESVAR_L4': 'um',
++    'DESVAR_W5': 'um',
++    'DESVAR_L5': 'um',
++    'DESVAR_W6': 'um',
++    'DESVAR_L6': 'um',
++    'DESVAR_W7': 'um',
++    'DESVAR_L7': 'um',
++    'DESVAR_W8': 'um',
++    'DESVAR_L8': 'um',
++    'DESVAR_M1': 'count',
++    'DESVAR_M2': 'count',
++    'DESVAR_M3': 'count',
++    'CCOMP_F': 'F',
++    'IBIAS_A': 'A',
++}
++PARAMETERS = tuple(PARAMETER_UNITS)
++
++EXPECTED_DEVICES = (
++    'XNM1',
++    'XNM7',
++    'XPM5',
++    'XPM17',
++    'XPM18',
++    'XNM2',
++    'XNM10',
++    'XNM4',
++    'XNM12',
++    'XNM13',
++    'XNM11',
++    'XNM9',
++    'XPM6',
++    'XPM16',
++    'XPM15',
++    'XNM8',
++)
++
++CONDITIONS = (
++    ("SUPPLY_VDD", "V"),
++    ("SUPPLY_VSS", "V"),
++    ("INPUT_VCM", "V"),
++    ("LOAD_C", "F"),
++    ("AC_DENSITY", "points/dec"),
++    ("AC_START_HZ", "Hz"),
++    ("AC_STOP_HZ", "Hz"),
++    ("REF_HZ", "Hz"),
++    ("SR_LOW", "V"),
++    ("SR_HIGH", "V"),
++)
++
++
++def finite_or_marker(value: float):
++    if math.isnan(value):
++        return "nan"
++    if math.isinf(value):
++        return "inf" if value > 0 else "-inf"
++    return value
++
++
++def read_dc_raw(path: Path) -> dict[str, float]:
++    """Read one real-valued Operating Point plot."""
++    lines = path.read_text(
++        encoding="utf-8",
++        errors="strict",
++    ).splitlines()
++
++    header = {}
++
++    try:
++        start = lines.index("Variables:")
++        end = lines.index("Values:", start)
++    except ValueError as exc:
++        raise ValueError(
++            "Expected an ASCII ngspice raw file "
++            "with Variables/Values sections"
++        ) from exc
++
++    for line in lines[:start]:
++        if ":" in line:
++            key, value = line.split(":", 1)
++            header[key.strip().lower()] = value.strip()
++
++    if header.get("plotname", "").lower() != "operating point":
++        raise ValueError(
++            "The raw file is not a DC Operating Point plot"
++        )
++
++    if header.get("flags", "").lower().split() != ["real"]:
++        raise ValueError(
++            "Expected real DC values, not a complex AC plot"
++        )
++
++    if int(header.get("no. points", "0")) != 1:
++        raise ValueError("Expected exactly one DC point")
++
++    count = int(header["no. variables"])
++    variables = []
++
++    for line in lines[start + 1:end]:
++        fields = line.split()
++
++        if fields:
++            if len(fields) < 3 or int(fields[0]) != len(variables):
++                raise ValueError(
++                    "Malformed raw-file variable table"
++                )
++
++            variables.append(fields[1].lower())
++
++    if len(variables) != count or len(set(variables)) != count:
++        raise ValueError(
++            "Incomplete or duplicated variable table"
++        )
++
++    data = [
++        line.split()
++        for line in lines[end + 1:]
++        if line.strip()
++    ]
++
++    if (
++        len(data) != count
++        or len(data[0]) != 2
++        or data[0][0] != "0"
++    ):
++        raise ValueError("Incomplete raw-file value table")
++
++    values = [float(data[0][1])]
++
++    for fields in data[1:]:
++        if len(fields) != 1:
++            raise ValueError("Malformed raw-file value")
++
++        values.append(float(fields[0]))
++
++    if not all(math.isfinite(value) for value in values):
++        raise ValueError(
++            "Non-finite DC state; refusing to present it "
++            "as a completed snapshot"
++        )
++
++    return dict(zip(variables, values))
++
++
++def parse_devices(netlist: str):
++    supported_models = {
++        "sky130_fd_pr__pfet_01v8": "PMOS",
++        "sky130_fd_pr__pfet_01v8_lvt": "PMOS",
++        "sky130_fd_pr__nfet_01v8": "NMOS",
++        "sky130_fd_pr__nfet_01v8_lvt": "NMOS",
++    }
++
++    match = re.search(
++        r"(?ims)^\.subckt\s+DUT\s+VINP\s+VINN\s+VOUT\s+VDD\s+VSS\s*\n"
++        r"(.*?)^\.ends\s+DUT\b",
++        netlist,
++    )
++    if not match:
++        raise ValueError(
++            "Cannot find the canonical DUT interface in the supplied netlist"
++        )
++
++    devices = []
++
++    for line in match.group(1).splitlines():
++        fields = line.split()
++
++        if not fields or not fields[0].lower().startswith("x"):
++            continue
++        if len(fields) < 6:
++            raise ValueError(f"Malformed MOS instance: {line}")
++
++        name, drain, gate, source, bulk, model = fields[:6]
++        model = model.lower()
++
++        if model not in supported_models:
++            raise ValueError(f"Unsupported MOS model: {model}")
++
++        devices.append((
++            name.upper(),
++            supported_models[model],
++            model,
++            drain.upper(),
++            gate.upper(),
++            source.upper(),
++            bulk.upper(),
++        ))
++
++    names = {device[0] for device in devices}
++    expected = set(EXPECTED_DEVICES)
++    if len(devices) != len(expected) or names != expected:
++        raise ValueError(
++            f"Expected {len(expected)} unique MOS devices; "
++            f"missing={sorted(expected - names)}, "
++            f"unexpected={sorted(names - expected)}. "
++            "Check for renamed, omitted or duplicated devices."
++        )
++
++    return devices
++
++
++def read_metrics(path: Path):
++    with path.open(
++        newline="",
++        encoding="utf-8",
++    ) as handle:
++        rows = list(csv.reader(handle))
++
++    if (
++        len(rows) != 2
++        or rows[0] != [metric[0] for metric in METRICS]
++        or len(rows[1]) != 9
++    ):
++        raise ValueError(
++            "Metrics TXT must have the exact canonical "
++            "header and one nine-column row"
++        )
++
++    return [
++        [name, finite_or_marker(float(cell)), unit]
++        for (name, unit), cell in zip(METRICS, rows[1])
++    ]
++
++
++def cell_column(index: int) -> str:
++    result = ""
++
++    while index:
++        index, remainder = divmod(index - 1, 26)
++        result = chr(65 + remainder) + result
++
++    return result
++
++
++def dc_formulas(row: int):
++    # Native Id/gm/gds already include M.
++    # gm/Id uses current magnitude.
++    return {
++        "gm_over_Id_per_V": (
++            f'=IF(ABS(R{row})>0,'
++            f'ABS(S{row})/ABS(R{row}),"nan")'
++        ),
++        "gm_over_gds": (
++            f'=IF(ABS(T{row})>0,'
++            f'ABS(S{row})/ABS(T{row}),"nan")'
++        ),
++        "ro_Ohm": (
++            f'=IF(ABS(T{row})>0,1/ABS(T{row}),"nan")'
++        ),
++        "VDS_oriented_V": (
++            f'=IF(B{row}="PMOS",-P{row},P{row})'
++        ),
++        "Vov_est_V": (
++            f'=IF(B{row}="PMOS",-O{row},O{row})'
++            f'-ABS(V{row})'
++        ),
++        "Saturation_margin_V": (
++            f"=AA{row}-ABS(W{row})"
++        ),
++    }
++
++
++def prepare_payload(
++    raw: dict[str, float],
++    netlist_text: str,
++    metric_rows,
++):
++    def required(name):
++        try:
++            return raw[name.lower()]
++        except KeyError as exc:
++            raise ValueError(
++                f"Missing required DC vector {name}; "
++                "the netlist/export schema may be stale"
++            ) from exc
++
++    def voltage(node):
++        port_map = {
++            "VINP": "inp_cm",
++            "VINN": "inn_cm",
++            "VOUT": "out_cm",
++            "VDD": "vdd_q",
++            "VSS": "vss_q",
++        }
++
++        if node in ("0", "GND"):
++            return 0.0
++
++        vector_name = (
++            "v("
++            + port_map.get(
++                node,
++                "xdut_cm." + node.lower(),
++            )
++            + ")"
++        )
++
++        return required(vector_name)
++
++    dc_rows = []
++    cap_rows = []
++
++    for (
++        name,
++        kind,
++        model,
++        drain,
++        gate,
++        source,
++        bulk,
++    ) in parse_devices(netlist_text):
++        fields = {
++            quantity: required(
++                f"op_{name.lower()}_{quantity}"
++            )
++            for quantity in CORE + CAPS + CHARGES
++        }
++
++        vd, vg, vs, vb = (
++            voltage(node)
++            for node in (drain, gate, source, bulk)
++        )
++
++        vgs = vg - vs
++        vds = vd - vs
++        vbs = vb - vs
++
++        polarity = -1 if kind == "PMOS" else 1
++        oriented = polarity * vds
++
++        ratio = (
++            abs(fields["gm"]) / abs(fields["id"])
++            if fields["id"]
++            else math.nan
++        )
++
++        intrinsic = (
++            abs(fields["gm"]) / abs(fields["gds"])
++            if fields["gds"]
++            else math.nan
++        )
++
++        ro = (
++            1 / abs(fields["gds"])
++            if fields["gds"]
++            else math.nan
++        )
++
++        row = [
++            name,
++            kind,
++            model,
++            drain,
++            gate,
++            source,
++            bulk,
++            fields["w"] * 1e6,
++            fields["l"] * 1e6,
++            fields["m"],
++            vd,
++            vg,
++            vs,
++            vb,
++            vgs,
++            vds,
++            vbs,
++            fields["id"],
++            fields["gm"],
++            fields["gds"],
++            fields["gmbs"],
++            fields["vth"],
++            fields["vdsat"],
++            ratio,
++            intrinsic,
++            ro,
++            oriented,
++            polarity * vgs - abs(fields["vth"]),
++            oriented - abs(fields["vdsat"]),
++        ]
++
++        dc_rows.append(
++            [
++                finite_or_marker(value)
++                if isinstance(value, float)
++                else value
++                for value in row
++            ]
++        )
++
++        cap_rows.append(
++            [name, kind, fields["m"]]
++            + [
++                fields[quantity]
++                for quantity in CAPS + CHARGES
++            ]
++        )
++
++    setup_rows = [
++        [
++            "DC snapshot",
++            "Instance",
++            "XDUT_CM",
++            "",
++            "Quiet voltage follower; "
++            "same instance as quiescent power",
++        ],
++        [
++            "DC snapshot",
++            "VINP_actual",
++            required("v(inp_cm)"),
++            "V",
++            "Actual node voltage, not the requested target",
++        ],
++        [
++            "DC snapshot",
++            "VINN_actual",
++            required("v(inn_cm)"),
++            "V",
++            "Feedback input may differ from VINP "
++            "at an unhealthy point",
++        ],
++        [
++            "DC snapshot",
++            "VOUT_actual",
++            required("v(out_cm)"),
++            "V",
++            "Actual solved DC output",
++        ],
++        [
++            "DC snapshot",
++            "Follower_error",
++            required("follower_error_v"),
++            "V",
++            "VOUT minus VINP; signed",
++        ],
++        [
++            "DC snapshot",
++            "DM_CM_bias_difference",
++            required("dm_cm_bias_difference_v"),
++            "V",
++            "OUT_DM minus OUT_CM",
++        ],
++        [
++            "DC snapshot",
++            "Power_Quiescent",
++            required("power_uw"),
++            "uW",
++            "One DUT instance only",
++        ],
++    ]
++
++    for name, unit in CONDITIONS:
++        setup_rows.append(
++            [
++                "Test condition",
++                name,
++                required("op_input_" + name.lower()),
++                unit,
++                "",
++            ]
++        )
++
++    temp = re.search(
++        r"(?im)^\s*\.temp\s+([-+\d.eE]+)",
++        netlist_text,
++    )
++
++    if temp:
++        setup_rows.append(
++            [
++                "Test condition",
++                "TEMP",
++                float(temp.group(1)),
++                "degC",
++                "",
++            ]
++        )
++
++    pdk = re.search(
++        r'(?im)^\s*\.lib\s+"([^"]+)"\s+(\S+)',
++        netlist_text,
++    )
++
++    if pdk:
++        setup_rows.extend(
++            [
++                [
++                    "Test condition",
++                    "PDK_PATH",
++                    pdk.group(1),
++                    "",
++                    "Model library used for this run",
++                ],
++                [
++                    "Test condition",
++                    "CORNER",
++                    pdk.group(2),
++                    "",
++                    "",
++                ],
++            ]
++        )
++
++    for name in PARAMETERS:
++        unit = PARAMETER_UNITS[name]
++
++        setup_rows.append(
++            [
++                "Design parameter",
++                name,
++                required("op_input_" + name.lower()),
++                unit,
++                "Resolved numeric value",
++            ]
++        )
++
++    setup_rows.extend(
++        [
++            [
++                "Definition",
++                "VGS_V / VDS_V / VBS_V",
++                "Terminal node differences",
++                "V",
++                "Signed; PMOS VGS/VDS normally negative",
++            ],
++            [
++                "Definition",
++                "Id_model_A / gm_S / gds_S",
++                "Native ngspice BSIM values",
++                "",
++                "Already include M; no extra multiplication",
++            ],
++            [
++                "Definition",
++                "Capacitances",
++                "Native BSIM charge-derivative matrix",
++                "F",
++                "Preserve signed off-diagonal terms; "
++                "not all entries are positive lumped capacitors",
++            ],
++            [
++                "Definition",
++                "Saturation_margin_V",
++                "VDS_oriented minus abs(Vdsat_model)",
++                "V",
++                "Diagnostic only; not an unconditional "
++                "operating-region classifier",
++            ],
++            [
++                "Definition",
++                "Vov_est_V",
++                "Oriented VGS minus abs(Vth_model)",
++                "V",
++                "Diagnostic only; negative overdrive "
++                "can occur in weak inversion",
++            ],
++            [
++                "Definition",
++                "Missing metric",
++                "nan",
++                "",
++                "No fabricated zero; valid negative "
++                "metrics are retained",
++            ],
++            [
++                "Definition",
++                "Transient initial point",
++                "Separate from the quiet DC snapshot",
++                "",
++                "Pulse starts at SR_LOW; "
++                "no transient transistor states are exported",
++            ],
++        ]
++    )
++
++    return {
++        "schema_version": 1,
++        "dc_headers": list(DC_HEADERS),
++        "dc_rows": dc_rows,
++        "cap_headers": list(CAP_HEADERS),
++        "cap_rows": cap_rows,
++        "metrics": metric_rows,
++        "setup_rows": setup_rows,
++        "dc_notes": (
++            "DC snapshot: XDUT_CM voltage follower. "
++            "Signed terminal voltages; "
++            "model currents already include M."
++        ),
++        "cap_notes": (
++            "Native BSIM capacitance/charge matrix. "
++            "Preserve signs of cross terms."
++        ),
++    }
++
++
++def atomic_csv(path: Path, header, rows):
++    path.parent.mkdir(
++        parents=True,
++        exist_ok=True,
++    )
++
++    fd, temporary = tempfile.mkstemp(
++        prefix=path.name + ".",
++        suffix=".tmp",
++        dir=path.parent,
++    )
++
++    try:
++        with os.fdopen(
++            fd,
++            "w",
++            newline="",
++            encoding="utf-8-sig",
++        ) as handle:
++            writer = csv.writer(handle)
++            writer.writerow(header)
++            writer.writerows(rows)
++
++        os.replace(temporary, path)
++
++    finally:
++        if os.path.exists(temporary):
++            os.unlink(temporary)
++
++
++def write_wide_csv(path: Path, payload):
++    header = ["DC_Instance"]
++    values = ["XDUT_CM"]
++
++    for row, cap in zip(
++        payload["dc_rows"],
++        payload["cap_rows"],
++    ):
++        for field, value in zip(
++            payload["dc_headers"][7:],
++            row[7:],
++        ):
++            header.append(row[0] + "__" + field)
++            values.append(value)
++
++        for field, value in zip(
++            payload["cap_headers"][3:],
++            cap[3:],
++        ):
++            header.append(row[0] + "__" + field)
++            values.append(value)
++
++    atomic_csv(
++        path,
++        header,
++        [values],
++    )
++
++
++def write_user_workbook(path: Path, payload):
++    try:
++        from openpyxl import Workbook
++        from openpyxl.styles import (
++            Alignment,
++            Font,
++            PatternFill,
++        )
++        from openpyxl.utils import get_column_letter
++        from openpyxl.workbook.properties import CalcProperties
++
++    except ImportError as exc:
++        raise RuntimeError(
++            "Install the Excel dependency first: "
++            "python3 -m pip install openpyxl"
++        ) from exc
++
++    workbook = Workbook()
++    workbook.remove(workbook.active)
++
++    workbook.calculation = CalcProperties(
++        calcId=124519,
++        fullCalcOnLoad=True,
++    )
++
++    contents = (
++        (
++            "DC_Operating_Point",
++            payload["dc_headers"],
++            payload["dc_rows"],
++            payload["dc_notes"],
++        ),
++        (
++            "MOS_Capacitances",
++            payload["cap_headers"],
++            payload["cap_rows"],
++            payload["cap_notes"],
++        ),
++        (
++            "Metrics",
++            ["Metric", "Value", "Unit"],
++            payload["metrics"],
++            "",
++        ),
++        (
++            "Setup",
++            ["Category", "Parameter", "Value", "Unit", "Notes"],
++            payload["setup_rows"],
++            "",
++        ),
++    )
++
++    for name, headers, rows, note in contents:
++        sheet = workbook.create_sheet(name)
++        sheet.sheet_view.showGridLines = False
++
++        sheet.append(headers)
++
++        for row in rows:
++            sheet.append(row)
++
++        if name == "DC_Operating_Point":
++            sheet.freeze_panes = "H2"
++        elif name == "MOS_Capacitances":
++            sheet.freeze_panes = "D2"
++        else:
++            sheet.freeze_panes = "A2"
++
++        sheet.auto_filter.ref = sheet.dimensions
++
++        for cell in sheet[1]:
++            cell.fill = PatternFill(
++                "solid",
++                fgColor="253B55",
++            )
++
++            cell.font = Font(
++                name="Arial",
++                size=10,
++                bold=True,
++                color="FFFFFF",
++            )
++
++            cell.alignment = Alignment(
++                horizontal="center",
++                vertical="center",
++                wrap_text=True,
++            )
++
++        sheet.row_dimensions[1].height = 34
++
++        for row in sheet.iter_rows(min_row=2):
++            for cell in row:
++                cell.font = Font(
++                    name="Arial",
++                    size=10,
++                    color="172B4D",
++                )
++
++                cell.alignment = Alignment(
++                    horizontal=(
++                        "right"
++                        if isinstance(cell.value, (int, float))
++                        else "left"
++                    ),
++                    vertical="center",
++                )
++
++                if isinstance(cell.value, (int, float)):
++                    cell.number_format = "0.000000E+00"
++
++            if row[0].row % 2 == 0:
++                for cell in row:
++                    cell.fill = PatternFill(
++                        "solid",
++                        fgColor="F3F6FA",
++                    )
++
++        for col_index, header in enumerate(headers, 1):
++            length = min(
++                max(len(str(header)) + 2, 16),
++                32,
++            )
++
++            if name == "DC_Operating_Point" and col_index == 3:
++                length = 32
++
++            if name == "Setup":
++                length = [22, 30, 68, 14, 100][col_index - 1]
++
++            if name == "Metrics":
++                length = [29, 22, 14][col_index - 1]
++
++            sheet.column_dimensions[
++                get_column_letter(col_index)
++            ].width = length
++
++        if note:
++            sheet.cell(
++                len(rows) + 3,
++                1,
++                note,
++            )
++
++        if name == "DC_Operating_Point":
++            for row_index in range(2, len(rows) + 2):
++                for field, formula in dc_formulas(row_index).items():
++                    column = headers.index(field) + 1
++
++                    sheet.cell(
++                        row_index,
++                        column,
++                        formula,
++                    ).number_format = "0.000000E+00"
++
++            for column in (8, 9):
++                for row in sheet.iter_rows(
++                    min_row=2,
++                    max_row=len(rows) + 1,
++                    min_col=column,
++                    max_col=column,
++                ):
++                    row[0].number_format = "0.000"
++
++            for row in sheet.iter_rows(
++                min_row=2,
++                max_row=len(rows) + 1,
++                min_col=10,
++                max_col=10,
++            ):
++                row[0].number_format = "0"
++
++    path.parent.mkdir(
++        parents=True,
++        exist_ok=True,
++    )
++
++    fd, temporary = tempfile.mkstemp(
++        prefix=path.stem + ".",
++        suffix=".xlsx",
++        dir=path.parent,
++    )
++    os.close(fd)
++
++    try:
++        workbook.save(temporary)
++        os.replace(temporary, path)
++
++    finally:
++        if os.path.exists(temporary):
++            os.unlink(temporary)
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(
++        description=__doc__,
++    )
++
++    parser.add_argument(
++        "--netlist",
++        type=Path,
++        default=Path("load_to_114_all_metrics.cir"),
++    )
++
++    parser.add_argument(
++        "--raw",
++        type=Path,
++        default=Path("load_to_114_dc_operating_point.raw"),
++    )
++
++    parser.add_argument(
++        "--metrics",
++        type=Path,
++        default=Path("load_to_114_metrics.txt"),
++    )
++
++    parser.add_argument(
++        "--output",
++        type=Path,
++        default=Path("load_to_114_results.xlsx"),
++    )
++
++    parser.add_argument(
++        "--wide-csv",
++        type=Path,
++        default=Path("load_to_114_dc_operating_point.csv"),
++    )
++
++    parser.add_argument(
++        "--json-output",
++        type=Path,
++        help="Optional numeric intermediate for analysis or CI",
++    )
++
++    parser.add_argument(
++        "--json-only",
++        action="store_true",
++        help="Validate/export the numeric intermediate without XLSX",
++    )
++
++    args = parser.parse_args(argv)
++
++    try:
++        payload = prepare_payload(
++            read_dc_raw(args.raw),
++            args.netlist.read_text(encoding="utf-8"),
++            read_metrics(args.metrics),
++        )
++
++        write_wide_csv(
++            args.wide_csv,
++            payload,
++        )
++
++        if args.json_output or args.json_only:
++            target = (
++                args.json_output
++                or args.output.with_suffix(".json")
++            )
++
++            target.parent.mkdir(
++                parents=True,
++                exist_ok=True,
++            )
++
++            target.write_text(
++                json.dumps(
++                    payload,
++                    ensure_ascii=False,
++                    indent=2,
++                    allow_nan=False,
++                ),
++                encoding="utf-8",
++            )
++
++        if not args.json_only:
++            write_user_workbook(
++                args.output,
++                payload,
++            )
++
++            print(
++                f"Excel saved: {args.output} "
++                f"({len(payload['dc_rows'])} MOS devices, 9 metrics, "
++                f"{len(PARAMETERS)} design parameters)",
++                flush=True,
++            )
++
++        print(
++            f"DC wide CSV saved: {args.wide_csv}",
++            flush=True,
++        )
++
++        return 0
++
++    except (OSError, ValueError, RuntimeError) as exc:
++        print(
++            f"Excel/DC export failed: {exc}",
++            file=sys.stderr,
++            flush=True,
++        )
++
++        return 1
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+\ No newline at end of file
+diff --git a/test/load_to_114_excel/requirements-load_to_114-excel.txt b/test/load_to_114_excel/requirements-load_to_114-excel.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..cf3c67d351e387ef887caf5721a808ede2fd69d8
+--- /dev/null
++++ b/test/load_to_114_excel/requirements-load_to_114-excel.txt
+@@ -0,0 +1 @@
++openpyxl>=3.1,<4.0

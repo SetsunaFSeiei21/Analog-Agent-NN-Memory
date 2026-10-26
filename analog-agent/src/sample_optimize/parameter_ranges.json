@@ -31,6 +31,12 @@
         "Opamp1": {
             "DESVAR_M2": [1,10,1],
             "DESVAR_M3": [1,10,1]
+        },
+        "Opamp2": {
+            "DESVAR_M1": [1, 10, 1]
+        },
+        "ltOpamp114":{
+            "DESVAR_M2": [1,10,1]
         }
     }
 }

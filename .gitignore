@@ -7,5 +7,7 @@ analog-agent/smoke_test_results/
 analog-agent/smoke_test_circuits/
 analog-agent/sampling_inputs/
 analog-agent/Analog-Agent_*.zip
+tmp_data/
+tmp_data.zip
 
 *.ipynb
