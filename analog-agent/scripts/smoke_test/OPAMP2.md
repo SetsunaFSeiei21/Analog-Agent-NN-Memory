@@ -15,7 +15,11 @@
 - XNM4 的倍乘为 `2*DESVAR_M2`，输入对、NMOS cascode 对及 PMOS 负载使用 M2。
 - 新增 `IBIAS_SRC NET6 VSS DC {IBIAS_A}`，从 PMOS 参考二极管支路抽取参考电流。
 - NMOS bulk 全部接 VSS；XPM3 和 XPM0 的 bulk 保留连接各自 source。
+- 按更新的参考网表，XNM7 的 source 接差分输入对的公共尾节点 `NET1`（参考中的 `sn`），bulk 仍接 VSS。
 - XNM7 属于 cascode 偏置生成支路，允许处于三极区，不纳入 SIGNAL 饱和约束。
+
+XNM7 从接地改接尾节点属于拓扑变化。修改后须在新结果目录重新仿真和采样，
+不能将新网表与旧拓扑的 DC OP、性能标签或已有采样数据库混用；先检查新的 DC 工作点。
 
 `profiles.py` 注册了 REFERENCES、SIGNAL 和 NODE_SEEDS，7 个宽度组完整覆盖所有 MOS。
 NODE_SEEDS 是初始化估计，不是已验证工作点。参数初值同样是示例，未经真实 SPICE 调优。

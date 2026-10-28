@@ -20,9 +20,10 @@ XPM6 NET6 NET6 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W1} L={DESVAR_L1} m
 XPM5 VB1  NET6 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W1} L={DESVAR_L1} m=1
 XPM4 NET3 NET6 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W1} L={DESVAR_L1} m=1
 
-* NMOS cascode-bias generator; the lower device may be in triode.
+* NMOS cascode-bias generator; NET1 is the reference netlist's SN tail node.
+* XNM7 source joins the input-pair tail; both NMOS bulks remain at VSS.
 XNM8 VB1  VB1 NET5 VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W2} L={DESVAR_L2} m={DESVAR_M1}
-XNM7 NET5 VB1 VSS  VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W2} L={DESVAR_L2} m=1
+XNM7 NET5 VB1 NET1 VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W2} L={DESVAR_L2} m=1
 
 * Tail-current mirror: XNM4 shares W3/L3 with XNM5.
 XNM5 NET3 NET3 VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W3} L={DESVAR_L3} m=1
