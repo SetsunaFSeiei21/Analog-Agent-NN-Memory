@@ -131,3 +131,41 @@ NODE_SEEDS["Opamp2"] = {
     "NET1": 0.15, "NET16": 0.3, "NET18": 0.3,
     "NET4": 0.8, "NET19": 1.3, "NET2": 1.3,
 }
+
+# Opamp3: complementary-input revision.
+# One reference transistor per independent W1..W8 group.
+REFERENCES["Opamp3"] = [
+    "XPM11",         # W1/L1: XPM11, XPM10
+    "XNM7",          # W2/L2: XNM7, XNM5
+    "XPM2",          # W3/L3: XPM2, XPM3
+    "XPM0",          # W4/L4: XPM0, XPM1
+    "XNM12",         # W5/L5: XNM12, XNM13
+    "XNM14",         # W6/L6: XNM14, XNM15
+    "XPM8",          # W7/L7: XPM8, XPM7
+    "XNM_BIAS1_REF",  # W8/L8: XNM_BIAS1_REF, XNM_BIAS1_OUT
+]
+
+# Both reference branches are input-driven.
+SIGNAL["Opamp3"] = [
+    "XPM11", "XPM10", "XNM7", "XNM5",
+    "XPM2", "XPM3", "XPM0", "XPM1",
+    "XNM12", "XNM13", "XNM14", "XNM15",
+    "XPM8", "XPM7", "XNM_BIAS1_REF", "XNM_BIAS1_OUT",
+]
+
+# Initial voltage guesses at 1.8 V, scaled by the solver.
+# These are not fixed voltages or verified operating points.
+NODE_SEEDS["Opamp3"] = {
+    "IB1": 1.70,
+    "IB2": 0.10,
+    "NET1": 1.10,
+    "NET2": 1.10,
+    "NET16": 0.30,
+    "NET17": 0.85,
+    "NET23": 1.25,
+    "NET24": 0.70,
+    "NET34": 0.45,
+    "NET42": 0.45,
+    "NET44": 0.30,
+    "NET45": 1.25,
+}

@@ -12,7 +12,7 @@
 *   8 W + 8 L + 3 M + CCOMP_F + IBIAS_A
 * ============================================================
 
-.include "ltOpamp114.sp"
+.include "ltOpamp114_params.sp"
 
 .subckt DUT VINP VINN VOUT VDD VSS
 
@@ -30,7 +30,7 @@ XPM18 N0 N7 VDD VDD sky130_fd_pr__pfet_01v8_lvt W={DESVAR_W2} L={DESVAR_L2} m=1
 
 * Tail-current reference and mirror
 XNM2 N2 N2 VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W3} L={DESVAR_L3} m=1
-XNM10 N1 N2 VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W3} L={DESVAR_L3} m={1+2*DESVAR_M1}
+XNM10 N1 N2 VSS VSS sky130_fd_pr__nfet_01v8_lvt W={DESVAR_W3} L={DESVAR_L3} m={2*DESVAR_M1}
 
 * Independent cascode-bias device
 * M3 adjusts the bias voltage; XPM18 supplies the branch current.
