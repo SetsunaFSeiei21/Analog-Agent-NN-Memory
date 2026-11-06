@@ -35,9 +35,26 @@
         "Opamp2": {
             "DESVAR_M1": [1, 10, 1]
         },
+        "Opamp4":{
+            "DESVAR_M3":[1,10,1]
+        },
+        "Opamp5":{
+            "DESVAR_M3":[1,10,1]
+        },
+        "Opamp6":{
+            "DESVAR_M1": [1,10,1],
+            "DESVAR_M2": [1,10,1],
+            "DESVAR_M3": [1,10,1],
+            "DESVAR_M4": [1,10,1]
+        },
+        "Opamp7":{
+            "DESVAR_M1": [1,10,1]
+        },
         "ltOpamp114":{
             "DESVAR_M2": [1,10,1],
             "DESVAR_M3": [1,10,1]
+        },
+        "Leung_NMCNR":{
         }
     }
 }

@@ -169,3 +169,231 @@ NODE_SEEDS["Opamp3"] = {
     "NET44": 0.30,
     "NET45": 1.25,
 }
+
+# Opamp4: one reference per independent W1..W6 group.
+REFERENCES["Opamp4"] = [
+    "XPM0",   # W1/L1: XPM0, XPM1, XPM3
+    "XNM7",   # W2/L2: XNM7, XNM8
+    "XNM5",   # W3/L3: XNM5, XNM6
+    "XPM9",   # W4/L4: XPM9, XPM10
+    "XPM4",   # W5/L5: XPM4, XPM5
+    "XNM11",  # W6/L6: XNM11
+]
+
+# Devices subject to signal-path operating-region checks.
+SIGNAL["Opamp4"] = [
+    "XNM8",            # Tail-current source
+    "XNM5", "XNM6",    # Input differential pair
+    "XPM9", "XPM10",   # PMOS current-mirror load
+    "XPM4", "XPM5",    # Additional PMOS current sources
+    "XNM11", "XPM3",   # Output stage
+]
+
+# Initial voltage guesses at 1.8 V, relative to VSS.
+# The solver scales these values with the supply span.
+# These are not fixed voltages or verified DC operating points.
+NODE_SEEDS["Opamp4"] = {
+    "IB1": 1.20,
+    "NET11": 0.50,
+    "NET21": 0.20,
+    "NET22": 1.10,
+    "NET29": 1.10,
+    "NET1": 1.10,
+}
+
+# Six independent shared W/L groups.
+REFERENCES["Leung_NMCNR"] = [
+    "XPM0",   # W1/L1: PMOS bias and first-stage mirror, 9 devices
+    "XPM9",   # W2/L2: PMOS input pair, 2 devices
+    "XPM10",  # W3/L3: second-stage PMOS, 1 device
+    "XNM14",  # W4/L4: NMOS bias and folded network, 9 devices
+    "XNM21",  # W5/L5: second-stage NMOS mirror, 2 devices
+    "XNM23",  # W6/L6: output-stage NMOS, 1 device
+]
+
+SIGNAL["Leung_NMCNR"] = [
+    "XPM4", "XPM8", "XPM9",
+    "XNM19", "XNM20", "XNM15", "XNM16",
+    "XPM5", "XPM6",
+    "XPM10", "XNM21", "XNM22", "XPM7",
+    "XNM23", "XPM11",
+]
+
+# Initial guesses near the checked nominal point at 1.8 V.
+# These are solver starting values, not fixed voltage constraints.
+NODE_SEEDS["Leung_NMCNR"] = {
+    "NET13": 1.288,
+    "VB3":   0.568,
+    "VB4":   0.510,
+    "NET54": 0.061,
+    "NET56": 0.061,
+    "DM_1":  0.510,
+    "NET31": 1.123,
+    "DM_2":  0.097,
+    "NET63": 0.100,
+    "VOUTN": 1.324,
+    "NET50": 1.443,
+    "NET43": 0.482,
+    "NET49": 0.443,
+    "NET44": 0.721,
+}
+
+# Fan_SMC: seven independent shared W/L groups.
+REFERENCES["Fan_SMC"] = [
+    "XPM0",   # W1/L1: PMOS bias and first-stage mirror, 8 devices
+    "XPM9",   # W2/L2: PMOS input pair, 2 devices
+    "XPM10",  # W3/L3: second-stage PMOS, 1 device
+    "XNM14",  # W4/L4: NMOS bias and folded network, 9 devices
+    "XNM21",  # W5/L5: second-stage NMOS mirror, 2 devices
+    "XNM23",  # W6/L6: output-stage NMOS, 1 device
+    "XPM11",  # W7/L7: feedforward PMOS, 1 device
+]
+
+SIGNAL["Fan_SMC"] = [
+    "XPM4", "XPM8", "XPM9",
+    "XNM19", "XNM20", "XNM15", "XNM16",
+    "XPM5", "XPM6",
+    "XPM10", "XNM21", "XNM22", "XPM7",
+    "XNM23", "XPM11",
+]
+
+# Initial guesses near the checked nominal point at 1.8 V.
+# These are solver starting values, not fixed voltage constraints.
+NODE_SEEDS["Fan_SMC"] = {
+    "NET13": 1.288,
+    "VB3":   0.568,
+    "VB4":   0.510,
+    "NET54": 0.061,
+    "NET56": 0.061,
+    "DM_1":  0.510,
+    "NET31": 1.123,
+    "DM_2":  0.097,
+    "NET63": 0.100,
+    "VOUTN": 1.324,
+    "NET50": 1.443,
+    "NET43": 0.482,
+    "NET49": 0.440,
+}
+
+# 每个独立宽度 W1..W8 选一只代表管，顺序对应 W1..W8。
+REFERENCES["Opamp5"] = [
+    "XPM0", "XNM5", "XNM4", "XNM7",
+    "XPM4", "XPM1", "XPM3", "XPM_GMID_AUX",
+]
+
+# 主电路中需要检查工作区的器件，不含辅助参考管。
+SIGNAL["Opamp5"] = [
+    "XNM9", "XNM7", "XNM8", "XPM4", "XPM5",
+    "XPM1", "XPM2", "XPM3", "XNM11",
+]
+
+# gm/ID 求解器的节点电压初值，单位 V。
+NODE_SEEDS["Opamp5"] = {
+    "NET1": 1.18, "NET8": 0.55, "NET9": 1.19, "NET18": 0.20,
+    "NET19": 1.16, "NET20": 0.96, "NET21": 1.17, "NET32": 0.92,
+    "VOUT": 0.72,
+}
+
+# Append to src/sample_optimize/advanced/profiles.py.
+# One reference per width, in W1..W9 order. XNM7_BIAS carries IBIAS_A.
+REFERENCES["Opamp6"] = [
+    "XNM7_BIAS", "XPM7_BIAS", "XNM9_BIAS", "XPM5_BIAS", "XNM8",
+    "XPM2", "XNM14", "XNM12", "XPM6",
+]
+
+SIGNAL["Opamp6"] = [
+    "XNM9", "XNM7", "XNM8", "XPM1", "XPM2", "XPM0",
+    "XNM14", "XNM13", "XNM12", "XPM3", "XPM6",
+]
+
+# Nominal follower, TT, VDD=1.8 V, VCM=0.72 V. Solver initial guesses only.
+NODE_SEEDS["Opamp6"] = {
+    "VB1": 0.52, "NET3": 1.22, "NET4": 0.07, "NET26": 0.64,
+    "NET1": 1.67, "NET35": 1.14, "NET17": 0.20, "NET11": 1.28,
+    "NET21": 1.26, "NET8": 0.54, "NET38": 0.12, "NET40": 1.64,
+    "VOUT": 0.71,
+}
+
+# ltOpamp114: one reference per independent W1..W9.
+# XNM1 carries IBIAS_A.
+REFERENCES["ltOpamp114"] = [
+    "XNM1",         # W1: NMOS reference mirror
+    "XPM5",         # W2: PMOS reference mirror
+    "XNM2",         # W3: tail reference, tail, output sink
+    "XNM13",        # W4: input differential pair
+    "XNM11",        # W5: input cascode pair
+    "XPM6",         # W6: first-stage PMOS mirror
+    "XPM15",        # W7: second-stage PMOS
+    "XNM11_BIAS",   # W8: upper cascode-bias diode
+    "XNM12_BIAS",   # W9: lower cascode-bias pair
+]
+
+SIGNAL["ltOpamp114"] = [
+    "XNM10",
+    "XNM12",
+    "XNM13",
+    "XNM11",
+    "XNM9",
+    "XPM6",
+    "XPM16",
+    "XPM15",
+    "XNM8",
+]
+
+# Initial voltage guesses at 1.8 V, not fixed voltage constraints.
+# N1/NET1 and N2/NET2 are distinct nodes.
+NODE_SEEDS["ltOpamp114"] = {
+    "VBIAS": 0.52,
+    "N0": 1.26,
+    "N1": 0.53,
+    "N2": 1.27,
+    "N3": 0.70,
+    "N4": 1.32,
+    "N5": 0.70,
+    "N6": 0.23,
+    "N7": 1.27,
+    "NET1": 0.57,
+    "NET2": 0.04,
+}
+
+# Opamp7: one reference per independent W1..W9 group.
+# Multiplicity expressions are read directly from the netlist.
+
+REFERENCES["Opamp7"] = [
+    "XNM_BIAS_REF",        # W1/L1
+    "XPM_BIAS_VB1",        # W2/L2
+    "XPM_BIAS_CAS_DIODE",  # W3/L3
+    "XPM19",              # W4/L4
+    "XNM17",              # W5/L5
+    "XNM13",              # W6/L6
+    "XNM0",               # W7/L7
+    "XNM10",              # W8/L8
+    "XPM_BIAS_REF",        # W9/L9
+]
+
+SIGNAL["Opamp7"] = [
+    "XNM4", "XNM0", "XNM3",
+    "XPM16", "XPM18", "XPM6", "XPM5",
+    "XNM8", "XNM7", "XNM10", "XNM9",
+]
+
+# Solver starting guesses at 1.8 V.
+# These are not fixed node voltages.
+NODE_SEEDS["Opamp7"] = {
+    "NET4": 0.61,
+    "VB1": 1.13,
+    "VB2": 0.92,
+    "NET5": 1.67,
+    "NET2": 1.13,
+    "VB3": 0.57,
+    "NET6": 1.11,
+    "NET1": 0.52,
+    "NET3": 1.17,
+    "NET10": 0.18,
+    "NET26": 1.56,
+    "NET32": 1.56,
+    "NET12": 0.75,
+    "NET27": 0.53,
+    "NET21": 0.53,
+    "VOUT": 0.72,
+}
